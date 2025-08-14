@@ -87,8 +87,7 @@ func (p *Processor) RenderApp(ctx context.Context, request *models.RenderRequest
 	runtime.InitCache(requestCache)
 
 	// Construct app path - use app_id to find the .star file in nested directory
-	// Structure: /opt/apps/apps/{app_id}/{app_id}.star
-	appPath := filepath.Join(p.config.AppsPath, "apps", request.AppID, request.AppID+".star")
+	appPath := filepath.Join(p.config.AppsPath, request.AppID, request.AppID+".star")
 
 	// Check if app exists
 	if _, err := os.Stat(appPath); os.IsNotExist(err) {
@@ -164,6 +163,8 @@ func (p *Processor) RenderApp(ctx context.Context, request *models.RenderRequest
 		zap.Int("output_size", len(webpData)))
 
 	return &models.RenderResult{
+		Type:         "render_result",
+		UUID:         request.UUID,
 		DeviceID:     request.Device.ID,
 		AppID:        request.AppID,
 		RenderOutput: base64Output,

@@ -12,6 +12,7 @@ type Device struct {
 // RenderRequest represents a request to render a Pixlet app
 type RenderRequest struct {
 	Type   string            `json:"type"`
+	UUID   string            `json:"uuid"` // Unique identifier for the request
 	AppID  string            `json:"app_id"`
 	Device Device            `json:"device"`
 	Params map[string]string `json:"params"`
@@ -19,6 +20,8 @@ type RenderRequest struct {
 
 // RenderResult represents the result of a render operation
 type RenderResult struct {
+	Type         string    `json:"type"`
+	UUID         string    `json:"uuid"` // Unique identifier for the result
 	DeviceID     string    `json:"device_id"`
 	AppID        string    `json:"app_id"`
 	RenderOutput string    `json:"render_output"` // base64 encoded WebP

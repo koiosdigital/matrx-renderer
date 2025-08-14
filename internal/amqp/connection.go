@@ -45,27 +45,11 @@ func NewConnection(cfg config.AMQPConfig, logger *zap.Logger) (*Connection, erro
 		return nil, fmt.Errorf("failed to set QoS: %w", err)
 	}
 
-	// Declare exchange
-	err = ch.ExchangeDeclare(
-		cfg.Exchange, // name
-		"topic",      // type
-		true,         // durable
-		false,        // auto-deleted
-		false,        // internal
-		false,        // no-wait
-		nil,          // arguments
-	)
-	if err != nil {
-		ch.Close()
-		conn.Close()
-		return nil, fmt.Errorf("failed to declare exchange: %w", err)
-	}
-
 	// Declare input queue
 	_, err = ch.QueueDeclare(
-		cfg.QueueName, // name
-		true,          // durable
-		false,         // delete when unused
+		cfg.QueueName, // name (e.g., matrx.render_requests)
+		false,         // durable
+		true,          // delete when unused
 		false,         // exclusive
 		false,         // no-wait
 		nil,           // arguments
@@ -73,24 +57,10 @@ func NewConnection(cfg config.AMQPConfig, logger *zap.Logger) (*Connection, erro
 	if err != nil {
 		ch.Close()
 		conn.Close()
-		return nil, fmt.Errorf("failed to declare queue: %w", err)
+		return nil, fmt.Errorf("failed to declare input queue: %w", err)
 	}
 
-	// Note: Result queues will be declared dynamically per device in PublishResult
-
-	// Bind queue to exchange
-	err = ch.QueueBind(
-		cfg.QueueName,  // queue name
-		cfg.RoutingKey, // routing key
-		cfg.Exchange,   // exchange
-		false,          // no-wait
-		nil,            // arguments
-	)
-	if err != nil {
-		ch.Close()
-		conn.Close()
-		return nil, fmt.Errorf("failed to bind queue: %w", err)
-	}
+	// Note: Output queues will be declared dynamically per device in PublishResult
 
 	return &Connection{
 		conn:    conn,
@@ -116,42 +86,18 @@ func (c *Connection) PublishResult(ctx context.Context, result *models.RenderRes
 	// Create device-specific queue name: matrx.{DEVICE_ID}
 	deviceQueue := fmt.Sprintf("matrx.%s", result.DeviceID)
 
-	// Declare the device-specific queue (idempotent operation)
-	_, err := c.channel.QueueDeclare(
-		deviceQueue, // name
-		true,        // durable
-		false,       // delete when unused
-		false,       // exclusive
-		false,       // no-wait
-		nil,         // arguments
-	)
-	if err != nil {
-		return fmt.Errorf("failed to declare device queue %s: %w", deviceQueue, err)
-	}
-
-	// Bind the device queue to the exchange with device ID as routing key
-	err = c.channel.QueueBind(
-		deviceQueue,       // queue name
-		result.DeviceID,   // routing key (device ID)
-		c.config.Exchange, // exchange
-		false,             // no-wait
-		nil,               // arguments
-	)
-	if err != nil {
-		return fmt.Errorf("failed to bind device queue %s: %w", deviceQueue, err)
-	}
-
 	body, err := json.Marshal(result)
 	if err != nil {
 		return fmt.Errorf("failed to marshal result: %w", err)
 	}
 
+	// Publish directly to the device queue (no exchange)
 	err = c.channel.PublishWithContext(
 		ctx,
-		c.config.Exchange, // exchange
-		result.DeviceID,   // routing key (device ID)
-		false,             // mandatory
-		false,             // immediate
+		"",          // exchange (empty string means default exchange)
+		deviceQueue, // routing key (queue name for direct publishing)
+		true,        // mandatory
+		false,       // immediate
 		amqp.Publishing{
 			ContentType:  "application/json",
 			Body:         body,

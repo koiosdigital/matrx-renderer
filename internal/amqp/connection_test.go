@@ -37,7 +37,7 @@ func TestAMQPConfig(t *testing.T) {
 	}
 
 	// Check default queue names
-	expectedInputQueue := "matrx.renderer_requests"
+	expectedInputQueue := "matrx.render_requests"
 	if cfg.AMQP.QueueName != expectedInputQueue {
 		t.Errorf("Expected input queue %s, got %s", expectedInputQueue, cfg.AMQP.QueueName)
 	}

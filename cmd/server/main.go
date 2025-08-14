@@ -54,8 +54,8 @@ func main() {
 	}()
 
 	logger.Info("Server started",
-		zap.String("queue", cfg.AMQP.QueueName),
-		zap.String("exchange", cfg.AMQP.Exchange))
+		zap.String("input_queue", cfg.AMQP.QueueName),
+		zap.String("output_queue_pattern", "matrx.{device_id}"))
 
 	// Wait for interrupt signal to gracefully shutdown
 	quit := make(chan os.Signal, 1)

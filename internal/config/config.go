@@ -54,7 +54,7 @@ func Load() (*Config, error) {
 		AMQP: AMQPConfig{
 			URL:           getEnv("AMQP_URL", "amqp://guest:guest@localhost:5672/"),
 			Exchange:      getEnv("AMQP_EXCHANGE", "matrx"),
-			QueueName:     getEnv("AMQP_QUEUE", "matrx.renderer_requests"),
+			QueueName:     getEnv("AMQP_QUEUE", "matrx.render_requests"),
 			RoutingKey:    getEnv("AMQP_ROUTING_KEY", "renderer_requests"),
 			ResultQueue:   getEnv("AMQP_RESULT_QUEUE", "matrx.{DEVICE_ID}"), // Template - will be replaced with actual device ID
 			PrefetchCount: getEnvAsInt("AMQP_PREFETCH_COUNT", 1),            // Default to 1 for fair distribution
