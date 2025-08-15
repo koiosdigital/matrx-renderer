@@ -104,7 +104,16 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp.Delivery) {
 				zap.String("app_id", request.AppID),
 				zap.String("device_id", request.Device.ID))
 		}
-		return
+
+		//publish result, with empty output
+		result = &models.RenderResult{
+			Type:         "render_result",
+			UUID:         request.UUID,
+			DeviceID:     request.Device.ID,
+			AppID:        request.AppID,
+			RenderOutput: "", // Empty output on error
+			ProcessedAt:  time.Now(),
+		}
 	}
 
 	// Publish successful result
