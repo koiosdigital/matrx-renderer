@@ -10,6 +10,7 @@ require (
 	github.com/redis/go-redis/v9 v9.12.1
 	go.starlark.net v0.0.0-20240411212711-9b43f0afd521
 	go.uber.org/zap v1.26.0
+	gopkg.in/yaml.v3 v3.0.1
 	tidbyt.dev/pixlet v0.34.0
 )
 

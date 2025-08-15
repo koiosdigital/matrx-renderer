@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -45,6 +47,27 @@ func main() {
 	// Initialize consumer
 	consumer := amqp.NewConsumer(amqpConn, eventHandler, logger)
 
+	// Create HTTP server for app management API
+	mux := http.NewServeMux()
+	appHandler := handlers.NewAppHandler(eventHandler.GetProcessor(), logger)
+	appHandler.RegisterRoutes(mux)
+
+	httpServer := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
+		Handler:      mux,
+		ReadTimeout:  time.Duration(cfg.Server.ReadTimeout) * time.Second,
+		WriteTimeout: time.Duration(cfg.Server.WriteTimeout) * time.Second,
+	}
+
+	// Start HTTP server
+	go func() {
+		logger.Info("Starting HTTP server", zap.Int("port", cfg.Server.Port))
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("HTTP server failed", zap.Error(err))
+			cancel()
+		}
+	}()
+
 	// Start consuming messages
 	go func() {
 		if err := consumer.Start(ctx, cfg.AMQP.QueueName); err != nil {
@@ -67,6 +90,11 @@ func main() {
 	// Give outstanding requests a deadline for completion
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
+
+	// Shutdown HTTP server
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		logger.Error("HTTP server shutdown failed", zap.Error(err))
+	}
 
 	// Cancel the main context to stop all operations
 	cancel()

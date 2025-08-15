@@ -78,3 +78,8 @@ func (h *EventHandler) Handle(ctx context.Context, request *models.RenderRequest
 
 	return result, nil
 }
+
+// GetProcessor returns the pixlet processor for HTTP handlers
+func (h *EventHandler) GetProcessor() *pixlet.Processor {
+	return h.pixletProcessor
+}
