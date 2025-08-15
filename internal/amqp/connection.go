@@ -21,53 +21,84 @@ type Connection struct {
 
 // NewConnection creates a new AMQP connection
 func NewConnection(cfg config.AMQPConfig, logger *zap.Logger) (*Connection, error) {
-	conn, err := amqp.Dial(cfg.URL)
+	c := &Connection{
+		config: cfg,
+		logger: logger,
+	}
+
+	if err := c.connect(); err != nil {
+		return nil, err
+	}
+
+	return c, nil
+}
+
+// connect establishes the AMQP connection and channel
+func (c *Connection) connect() error {
+	// Close existing connections if any
+	if c.channel != nil {
+		c.channel.Close()
+	}
+	if c.conn != nil {
+		c.conn.Close()
+	}
+
+	conn, err := amqp.Dial(c.config.URL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to AMQP: %w", err)
+		return fmt.Errorf("failed to connect to AMQP: %w", err)
 	}
 
 	ch, err := conn.Channel()
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("failed to open channel: %w", err)
+		return fmt.Errorf("failed to open channel: %w", err)
 	}
 
 	// Set QoS for fair distribution across multiple consumers
 	// This ensures each consumer gets only the configured number of unacknowledged messages
 	err = ch.Qos(
-		cfg.PrefetchCount, // prefetch count (number of messages to prefetch)
-		0,                 // prefetch size (0 = no limit on message size)
-		false,             // global (false = apply to current consumer only)
+		c.config.PrefetchCount, // prefetch count (number of messages to prefetch)
+		0,                      // prefetch size (0 = no limit on message size)
+		false,                  // global (false = apply to current consumer only)
 	)
 	if err != nil {
 		ch.Close()
 		conn.Close()
-		return nil, fmt.Errorf("failed to set QoS: %w", err)
+		return fmt.Errorf("failed to set QoS: %w", err)
 	}
 
 	// Declare input queue
 	_, err = ch.QueueDeclare(
-		cfg.QueueName, // name (e.g., matrx.render_requests)
-		false,         // durable
-		true,          // delete when unused
-		false,         // exclusive
-		false,         // no-wait
-		nil,           // arguments
+		c.config.QueueName, // name (e.g., matrx.render_requests)
+		false,              // durable
+		true,               // delete when unused
+		false,              // exclusive
+		false,              // no-wait
+		nil,                // arguments
 	)
 	if err != nil {
 		ch.Close()
 		conn.Close()
-		return nil, fmt.Errorf("failed to declare input queue: %w", err)
+		return fmt.Errorf("failed to declare input queue: %w", err)
 	}
 
-	// Note: Output queues will be declared dynamically per device in PublishResult
+	// Update connection and channel
+	c.conn = conn
+	c.channel = ch
 
-	return &Connection{
-		conn:    conn,
-		channel: ch,
-		config:  cfg,
-		logger:  logger,
-	}, nil
+	c.logger.Info("AMQP connection established",
+		zap.String("queue", c.config.QueueName))
+
+	return nil
+}
+
+// EnsureConnection checks if the connection is healthy and reconnects if needed
+func (c *Connection) EnsureConnection() error {
+	if c.conn == nil || c.conn.IsClosed() || c.channel == nil {
+		c.logger.Warn("AMQP connection lost, attempting to reconnect")
+		return c.connect()
+	}
+	return nil
 }
 
 // Close closes the AMQP connection and channel
@@ -83,6 +114,11 @@ func (c *Connection) Close() error {
 
 // PublishResult publishes a result message to the device-specific queue
 func (c *Connection) PublishResult(ctx context.Context, result *models.RenderResult) error {
+	// Ensure we have a valid connection
+	if err := c.EnsureConnection(); err != nil {
+		return fmt.Errorf("failed to ensure connection: %w", err)
+	}
+
 	// Create device-specific queue name: matrx.{DEVICE_ID}
 	deviceQueue := fmt.Sprintf("matrx.%s", result.DeviceID)
 

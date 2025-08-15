@@ -33,8 +33,55 @@ func NewConsumer(conn *Connection, handler EventHandler, logger *zap.Logger) *Co
 	}
 }
 
-// Start starts consuming messages from the specified queue
+// Start starts consuming messages from the specified queue with automatic reconnection
 func (c *Consumer) Start(ctx context.Context, queueName string) error {
+	retryDelay := time.Second
+	maxRetryDelay := 30 * time.Second
+	retryCount := 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Info("Consumer context cancelled, stopping")
+			return ctx.Err()
+		default:
+			// Attempt to start consuming messages
+			if err := c.startConsuming(ctx, queueName); err != nil {
+				retryCount++
+				c.logger.Error("Consumer failed, will retry after delay",
+					zap.Error(err),
+					zap.String("queue", queueName),
+					zap.Int("retry_count", retryCount),
+					zap.Duration("retry_delay", retryDelay))
+
+				// Wait before retrying with exponential backoff, but respect context cancellation
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(retryDelay):
+					// Exponential backoff with jitter
+					retryDelay = time.Duration(float64(retryDelay) * 1.5)
+					if retryDelay > maxRetryDelay {
+						retryDelay = maxRetryDelay
+					}
+					continue
+				}
+			} else {
+				// Reset retry delay on successful connection
+				retryDelay = time.Second
+				retryCount = 0
+			}
+		}
+	}
+}
+
+// startConsuming handles a single consumption session
+func (c *Consumer) startConsuming(ctx context.Context, queueName string) error {
+	// Ensure we have a valid connection
+	if err := c.conn.EnsureConnection(); err != nil {
+		return fmt.Errorf("failed to ensure connection: %w", err)
+	}
+
 	// Generate unique consumer tag for this instance
 	hostname, _ := os.Hostname()
 	consumerTag := fmt.Sprintf("matrx-renderer-%s-%d", hostname, time.Now().Unix())
@@ -63,7 +110,7 @@ func (c *Consumer) Start(ctx context.Context, queueName string) error {
 			return ctx.Err()
 		case msg, ok := <-msgs:
 			if !ok {
-				c.logger.Warn("Message channel closed")
+				c.logger.Warn("Message channel closed, will reconnect")
 				return fmt.Errorf("message channel closed")
 			}
 

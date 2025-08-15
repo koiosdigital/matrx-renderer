@@ -90,10 +90,8 @@ func (p *Processor) RenderApp(ctx context.Context, request *models.RenderRequest
 	// Set up cache for this request
 	var requestCache runtime.Cache
 	if p.redisCache != nil {
-		// Use Redis cache with app/device scoped keys
-		requestCache = p.redisCache.WithContext(request.AppID, request.Device.ID)
+		requestCache = p.redisCache
 	} else {
-		// Use the default in-memory cache
 		requestCache = p.cache
 	}
 
