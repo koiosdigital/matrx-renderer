@@ -146,13 +146,12 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp.Delivery) {
 	// Handle the event
 	result, err := c.handler.Handle(ctx, &request)
 	if err != nil {
-		// Log error but create a result with empty output
 		c.logger.Error("Failed to handle event",
 			zap.Error(err),
 			zap.String("app_id", request.AppID),
 			zap.String("device_id", request.Device.ID))
 
-		// Create result with empty output on error
+		// Create error result with empty output
 		result = &models.RenderResult{
 			Type:         "render_result",
 			UUID:         request.UUID,

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/koios/matrx-renderer/internal/config"
 	"github.com/koios/matrx-renderer/internal/pixlet"
@@ -69,7 +70,17 @@ func (h *EventHandler) Handle(ctx context.Context, request *models.RenderRequest
 			zap.Error(err),
 			zap.String("app_id", request.AppID),
 			zap.String("device_id", request.Device.ID))
-		return nil, err // Don't send error responses via AMQP as requested
+
+		// Create result with empty output on error
+		result2 := &models.RenderResult{
+			Type:         "render_result",
+			UUID:         request.UUID,
+			DeviceID:     request.Device.ID,
+			AppID:        request.AppID,
+			RenderOutput: "", // Empty output on error
+			ProcessedAt:  time.Now(),
+		}
+		return result2, err // Don't send error responses via AMQP as requested
 	}
 
 	h.logger.Info("Render request completed successfully",
