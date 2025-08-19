@@ -142,8 +142,18 @@ func (p *Processor) RenderApp(ctx context.Context, request *models.RenderRequest
 		return nil, fmt.Errorf("failed to load applet: %w", err)
 	}
 
-	// Run the applet with configuration
-	roots, err := applet.RunWithConfig(renderCtx, request.Params)
+	// Prepare config with device dimensions and request params
+	config := make(map[string]string)
+
+	// Add request params first
+	for key, value := range request.Params {
+		config[key] = value
+	}
+
+	// Set device dimensions, allowing them to override request params if specified
+	config["display_width"] = fmt.Sprintf("%d", request.Device.Width)
+	config["display_height"] = fmt.Sprintf("%d", request.Device.Height) // Run the applet with configuration
+	roots, err := applet.RunWithConfig(renderCtx, config)
 	if err != nil {
 		return nil, fmt.Errorf("error running applet: %w", err)
 	}
