@@ -32,8 +32,6 @@ services:
       - AMQP_RESULT_QUEUE=render_results
       - PIXLET_APPS_PATH=/opt/apps
       - LOG_LEVEL=info
-    volumes:
-      - ./apps:/opt/apps:ro
     restart: unless-stopped
     healthcheck:
       test: pgrep matrx-renderer > /dev/null || exit 1
