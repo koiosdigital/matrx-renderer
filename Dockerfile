@@ -68,16 +68,16 @@ RUN mkdir -p /etc/s6-overlay/s6-rc.d/renderer/dependencies.d \
     && mkdir -p /etc/s6-overlay/s6-rc.d/git-puller/dependencies.d \
     && mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d
 
-# Create renderer service with shell script
+# Create renderer service with shell script that inherits environment
 RUN echo "longrun" > /etc/s6-overlay/s6-rc.d/renderer/type \
     && echo "appuser" > /etc/s6-overlay/s6-rc.d/renderer/user \
-    && printf '#!/bin/sh\ncd /app\nexec ./matrx-renderer\n' > /etc/s6-overlay/s6-rc.d/renderer/run \
+    && printf '#!/command/with-contenv sh\ncd /app\nexec ./matrx-renderer\n' > /etc/s6-overlay/s6-rc.d/renderer/run \
     && chmod +x /etc/s6-overlay/s6-rc.d/renderer/run
 
-# Create git-puller service with shell script
+# Create git-puller service with shell script that inherits environment
 RUN echo "longrun" > /etc/s6-overlay/s6-rc.d/git-puller/type \
     && echo "appuser" > /etc/s6-overlay/s6-rc.d/git-puller/user \
-    && printf '#!/bin/sh\necho "Starting git puller service..."\n# Set environment variables\nexport HOME=/home/appuser\n# Configure git safe directory at runtime\ngit config --global --add safe.directory /opt/apps\ngit config --global user.email "renderer@koios.digital"\ngit config --global user.name "Matrx Renderer"\nwhile true; do\n    echo "Pulling latest changes..."\n    cd /opt/apps\n    if git pull origin main; then\n        echo "Git pull completed successfully"\n    else\n        echo "Git pull failed, retrying in 60 seconds"\n    fi\n    sleep 60\ndone\n' > /etc/s6-overlay/s6-rc.d/git-puller/run \
+    && printf '#!/command/with-contenv sh\necho "Starting git puller service..."\n# Set environment variables\nexport HOME=/home/appuser\n# Configure git safe directory at runtime\ngit config --global --add safe.directory /opt/apps\ngit config --global user.email "renderer@koios.digital"\ngit config --global user.name "Matrx Renderer"\nwhile true; do\n    echo "Pulling latest changes..."\n    cd /opt/apps\n    if git pull origin main; then\n        echo "Git pull completed successfully"\n    else\n        echo "Git pull failed, retrying in 60 seconds"\n    fi\n    sleep 60\ndone\n' > /etc/s6-overlay/s6-rc.d/git-puller/run \
     && chmod +x /etc/s6-overlay/s6-rc.d/git-puller/run
 
 # Add services to user bundle
