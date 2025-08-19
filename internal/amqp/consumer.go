@@ -146,21 +146,13 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp.Delivery) {
 	// Handle the event
 	result, err := c.handler.Handle(ctx, &request)
 	if err != nil {
-		// As requested: log error but don't send AMQP response on error
+		// Log error but create a result with empty output
 		c.logger.Error("Failed to handle event",
 			zap.Error(err),
 			zap.String("app_id", request.AppID),
 			zap.String("device_id", request.Device.ID))
 
-		// Acknowledge the message to remove it from queue
-		if ackErr := msg.Ack(false); ackErr != nil {
-			c.logger.Error("Failed to acknowledge message after error",
-				zap.Error(ackErr),
-				zap.String("app_id", request.AppID),
-				zap.String("device_id", request.Device.ID))
-		}
-
-		//publish result, with empty output
+		// Create result with empty output on error
 		result = &models.RenderResult{
 			Type:         "render_result",
 			UUID:         request.UUID,
@@ -171,20 +163,33 @@ func (c *Consumer) handleMessage(ctx context.Context, msg amqp.Delivery) {
 		}
 	}
 
-	// Publish successful result
-	if err := c.conn.PublishResult(ctx, result); err != nil {
+	// Always publish result (successful or error)
+	if publishErr := c.conn.PublishResult(ctx, result); publishErr != nil {
 		c.logger.Error("Failed to publish result",
-			zap.Error(err),
+			zap.Error(publishErr),
 			zap.String("app_id", request.AppID),
 			zap.String("device_id", request.Device.ID))
-		msg.Nack(false, true) // Requeue the message
+
+		// Only requeue if it was a successful render that failed to publish
+		// For error results, we still want to ack to avoid infinite retry loops
+		if err == nil {
+			msg.Nack(false, true) // Requeue the message only for successful renders
+		} else {
+			// For error results, acknowledge anyway to prevent infinite retries
+			if ackErr := msg.Ack(false); ackErr != nil {
+				c.logger.Error("Failed to acknowledge message after publish error",
+					zap.Error(ackErr),
+					zap.String("app_id", request.AppID),
+					zap.String("device_id", request.Device.ID))
+			}
+		}
 		return
 	}
 
-	// Acknowledge the message
-	if err := msg.Ack(false); err != nil {
+	// Acknowledge the message on successful publish
+	if ackErr := msg.Ack(false); ackErr != nil {
 		c.logger.Error("Failed to acknowledge message",
-			zap.Error(err),
+			zap.Error(ackErr),
 			zap.String("app_id", request.AppID),
 			zap.String("device_id", request.Device.ID))
 	}
