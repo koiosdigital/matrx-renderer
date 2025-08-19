@@ -21,15 +21,30 @@ import (
 	"tidbyt.dev/pixlet/tools"
 )
 
+// NoOpAEAD is a dummy implementation of tink.AEAD that transparently returns the underlying data
+// without any encryption/decryption. Used for development/testing purposes.
+type NoOpAEAD struct{}
+
+// Encrypt simply returns the plaintext as-is, ignoring associatedData
+func (n *NoOpAEAD) Encrypt(plaintext, associatedData []byte) ([]byte, error) {
+	return plaintext, nil
+}
+
+// Decrypt simply returns the ciphertext as-is, ignoring associatedData
+func (n *NoOpAEAD) Decrypt(ciphertext, associatedData []byte) ([]byte, error) {
+	return ciphertext, nil
+}
+
 // Processor handles Pixlet app processing with a persistent runtime
 type Processor struct {
-	config      *config.PixletConfig
-	redisConfig *config.RedisConfig
-	logger      *zap.Logger
-	cache       runtime.Cache
-	redisCache  *RedisCache // Shared Redis cache instance
-	timeout     time.Duration
-	appRegistry *models.AppRegistry // App registry for manifest-based loading
+	config              *config.PixletConfig
+	redisConfig         *config.RedisConfig
+	logger              *zap.Logger
+	cache               runtime.Cache
+	redisCache          *RedisCache // Shared Redis cache instance
+	timeout             time.Duration
+	appRegistry         *models.AppRegistry         // App registry for manifest-based loading
+	secretDecryptionKey runtime.SecretDecryptionKey // Key for decrypting secrets in Pixlet apps
 }
 
 // NewProcessor creates a new Pixlet processor with persistent runtime using InMemory cache
@@ -44,12 +59,23 @@ func NewProcessor(cfg *config.PixletConfig, logger *zap.Logger) *Processor {
 		logger.Error("Failed to load apps", zap.Error(err))
 	}
 
+	decodedKeyset, err := base64.StdEncoding.DecodeString(cfg.PlaintextSecretKeysetB64)
+	if err != nil {
+		logger.Error("Failed to decode secret keyset", zap.Error(err))
+	}
+
+	secretDecryptionKey := &runtime.SecretDecryptionKey{
+		EncryptedKeysetJSON: decodedKeyset,
+		KeyEncryptionKey:    &NoOpAEAD{}, // Use NoOp AEAD for transparent key handling
+	}
+
 	return &Processor{
-		config:      cfg,
-		logger:      logger,
-		cache:       cache,
-		timeout:     30 * time.Second, // Default timeout
-		appRegistry: appRegistry,
+		config:              cfg,
+		logger:              logger,
+		cache:               cache,
+		timeout:             30 * time.Second, // Default timeout
+		appRegistry:         appRegistry,
+		secretDecryptionKey: *secretDecryptionKey,
 	}
 }
 
@@ -69,14 +95,25 @@ func NewProcessorWithRedis(cfg *config.PixletConfig, redisConfig *config.RedisCo
 		logger.Error("Failed to load apps", zap.Error(err))
 	}
 
+	decodedKeyset, err := base64.StdEncoding.DecodeString(cfg.PlaintextSecretKeysetB64)
+	if err != nil {
+		logger.Error("Failed to decode secret keyset", zap.Error(err))
+	}
+
+	secretDecryptionKey := &runtime.SecretDecryptionKey{
+		EncryptedKeysetJSON: decodedKeyset,
+		KeyEncryptionKey:    &NoOpAEAD{}, // Use NoOp AEAD for transparent key handling
+	}
+
 	return &Processor{
-		config:      cfg,
-		redisConfig: redisConfig,
-		logger:      logger,
-		cache:       cache,
-		redisCache:  redisCache,
-		timeout:     30 * time.Second, // Default timeout
-		appRegistry: appRegistry,
+		config:              cfg,
+		redisConfig:         redisConfig,
+		logger:              logger,
+		cache:               cache,
+		redisCache:          redisCache,
+		timeout:             30 * time.Second, // Default timeout
+		appRegistry:         appRegistry,
+		secretDecryptionKey: *secretDecryptionKey,
 	}
 }
 
@@ -135,6 +172,7 @@ func (p *Processor) RenderApp(ctx context.Context, request *models.RenderRequest
 	// Create applet with silent output (no print statements)
 	opts := []runtime.AppletOption{
 		runtime.WithPrintDisabled(),
+		runtime.WithSecretDecryptionKey(&p.secretDecryptionKey),
 	}
 
 	applet, err := runtime.NewAppletFromFS(request.AppID, appFS, opts...)
@@ -255,6 +293,7 @@ func (p *Processor) GetAppSchema(ctx context.Context, appID string) (*schema.Sch
 	// Create applet with silent output (no print statements)
 	opts := []runtime.AppletOption{
 		runtime.WithPrintDisabled(),
+		runtime.WithSecretDecryptionKey(&p.secretDecryptionKey),
 	}
 
 	applet, err := runtime.NewAppletFromFS(appID, appFS, opts...)
@@ -305,6 +344,7 @@ func (p *Processor) CallSchemaHandler(ctx context.Context, appID, handlerName, p
 	// Create applet with silent output (no print statements)
 	opts := []runtime.AppletOption{
 		runtime.WithPrintDisabled(),
+		runtime.WithSecretDecryptionKey(&p.secretDecryptionKey),
 	}
 
 	applet, err := runtime.NewAppletFromFS(appID, appFS, opts...)
