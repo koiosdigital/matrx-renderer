@@ -14,6 +14,8 @@ require (
 	tidbyt.dev/pixlet v0.34.0
 )
 
+require github.com/google/go-cmp v0.7.0 // indirect
+
 require (
 	github.com/PuerkitoBio/goquery v1.5.1 // indirect
 	github.com/andybalholm/cascadia v1.1.0 // indirect
@@ -30,7 +32,7 @@ require (
 	github.com/go-playground/validator/v10 v10.19.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/google/tink/go v1.7.0 // indirect
+	github.com/google/tink/go v1.7.0
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/nathan-osman/go-sunrise v1.1.0 // indirect
@@ -43,7 +45,6 @@ require (
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/tidbyt/gg v0.0.0-20220808163829-95806fa1d427 // indirect
 	github.com/tidbyt/go-libwebp v0.0.0-20230922075150-fb11063b2a6a // indirect
-	github.com/tink-crypto/tink-go/v2 v2.4.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/zachomedia/go-bdf v0.0.0-20220611021443-a3af701111be // indirect

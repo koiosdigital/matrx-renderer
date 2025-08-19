@@ -20,7 +20,7 @@ import (
 	"tidbyt.dev/pixlet/schema"
 	"tidbyt.dev/pixlet/tools"
 
-	"github.com/tink-crypto/tink-go/v2/testing/fakekms"
+	"github.com/google/tink/go/testing/fakekms"
 )
 
 // Processor handles Pixlet app processing with a persistent runtime
