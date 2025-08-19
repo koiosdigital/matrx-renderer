@@ -35,8 +35,9 @@ type ServerConfig struct {
 
 // PixletConfig holds Pixlet-related configuration
 type PixletConfig struct {
-	AppsPath                 string
-	PlaintextSecretKeysetB64 string // Base64 encoded secret keyset for Pixlet
+	AppsPath               string
+	SecretEncryptionKeyB64 string // Base64 encoded secret keyset for Pixlet
+	KeyEncryptionKeyB64    string // Base64 encoded key encryption key for Pixlet
 }
 
 // RedisConfig holds Redis-related configuration
@@ -66,8 +67,9 @@ func Load() (*Config, error) {
 			WriteTimeout: getEnvAsInt("SERVER_WRITE_TIMEOUT", 10),
 		},
 		Pixlet: PixletConfig{
-			AppsPath:                 getEnv("PIXLET_APPS_PATH", "/opt/apps"),
-			PlaintextSecretKeysetB64: getEnv("PIXLET_SECRET_KEYSET_B64", ""),
+			AppsPath:               getEnv("PIXLET_APPS_PATH", "/opt/apps"),
+			SecretEncryptionKeyB64: getEnv("PIXLET_SECRET_KEYSET_B64", ""),
+			KeyEncryptionKeyB64:    getEnv("PIXLET_KEY_ENCRYPTION_KEY_B64", ""),
 		},
 		Redis: RedisConfig{
 			Addr:     getEnv("REDIS_ADDR", "localhost:6379"),

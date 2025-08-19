@@ -19,21 +19,9 @@ import (
 	"tidbyt.dev/pixlet/runtime"
 	"tidbyt.dev/pixlet/schema"
 	"tidbyt.dev/pixlet/tools"
+
+	"github.com/tink-crypto/tink-go/v2/testing/fakekms"
 )
-
-// NoOpAEAD is a dummy implementation of tink.AEAD that transparently returns the underlying data
-// without any encryption/decryption. Used for development/testing purposes.
-type NoOpAEAD struct{}
-
-// Encrypt simply returns the plaintext as-is, ignoring associatedData
-func (n *NoOpAEAD) Encrypt(plaintext, associatedData []byte) ([]byte, error) {
-	return plaintext, nil
-}
-
-// Decrypt simply returns the ciphertext as-is, ignoring associatedData
-func (n *NoOpAEAD) Decrypt(ciphertext, associatedData []byte) ([]byte, error) {
-	return ciphertext, nil
-}
 
 // Processor handles Pixlet app processing with a persistent runtime
 type Processor struct {
@@ -45,6 +33,29 @@ type Processor struct {
 	timeout             time.Duration
 	appRegistry         *models.AppRegistry         // App registry for manifest-based loading
 	secretDecryptionKey runtime.SecretDecryptionKey // Key for decrypting secrets in Pixlet apps
+}
+
+func GetSecretDecryptionKey(cfg *config.PixletConfig, logger *zap.Logger) (*runtime.SecretDecryptionKey, error) {
+	client, err := fakekms.NewClient(cfg.KeyEncryptionKeyB64)
+	if err != nil {
+		logger.Fatal("Failed to create KMS client", zap.Error(err))
+	}
+	kekAEAD, err := client.GetAEAD(cfg.KeyEncryptionKeyB64)
+	if err != nil {
+		logger.Fatal("Failed to GetAEAD", zap.Error(err))
+	}
+
+	decodedKeyset, err := base64.StdEncoding.DecodeString(cfg.SecretEncryptionKeyB64)
+	if err != nil {
+		logger.Error("Failed to decode secret keyset", zap.Error(err))
+	}
+
+	secretDecryptionKey := &runtime.SecretDecryptionKey{
+		EncryptedKeysetJSON: decodedKeyset,
+		KeyEncryptionKey:    kekAEAD, // Use NoOp AEAD for transparent key handling
+	}
+
+	return secretDecryptionKey, nil
 }
 
 // NewProcessor creates a new Pixlet processor with persistent runtime using InMemory cache
@@ -59,14 +70,9 @@ func NewProcessor(cfg *config.PixletConfig, logger *zap.Logger) *Processor {
 		logger.Error("Failed to load apps", zap.Error(err))
 	}
 
-	decodedKeyset, err := base64.StdEncoding.DecodeString(cfg.PlaintextSecretKeysetB64)
+	secretDecryptionKey, err := GetSecretDecryptionKey(cfg, logger)
 	if err != nil {
-		logger.Error("Failed to decode secret keyset", zap.Error(err))
-	}
-
-	secretDecryptionKey := &runtime.SecretDecryptionKey{
-		EncryptedKeysetJSON: decodedKeyset,
-		KeyEncryptionKey:    &NoOpAEAD{}, // Use NoOp AEAD for transparent key handling
+		logger.Error("Failed to get secret decryption key", zap.Error(err))
 	}
 
 	return &Processor{
@@ -95,14 +101,9 @@ func NewProcessorWithRedis(cfg *config.PixletConfig, redisConfig *config.RedisCo
 		logger.Error("Failed to load apps", zap.Error(err))
 	}
 
-	decodedKeyset, err := base64.StdEncoding.DecodeString(cfg.PlaintextSecretKeysetB64)
+	secretDecryptionKey, err := GetSecretDecryptionKey(cfg, logger)
 	if err != nil {
-		logger.Error("Failed to decode secret keyset", zap.Error(err))
-	}
-
-	secretDecryptionKey := &runtime.SecretDecryptionKey{
-		EncryptedKeysetJSON: decodedKeyset,
-		KeyEncryptionKey:    &NoOpAEAD{}, // Use NoOp AEAD for transparent key handling
+		logger.Error("Failed to get secret decryption key", zap.Error(err))
 	}
 
 	return &Processor{
