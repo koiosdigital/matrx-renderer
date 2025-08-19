@@ -96,6 +96,14 @@ func (c *Consumer) startConsuming(ctx context.Context, queueName string) error {
 		nil,         // args
 	)
 	if err != nil {
+		// If consume fails, force a reconnection on next attempt
+		c.logger.Warn("Failed to register consumer, forcing reconnection",
+			zap.Error(err),
+			zap.String("queue", queueName))
+
+		// Force close current connection to ensure reconnection
+		c.conn.forceClose()
+
 		return fmt.Errorf("failed to register consumer: %w", err)
 	}
 
