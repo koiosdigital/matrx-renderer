@@ -9,21 +9,10 @@ import (
 
 // Config holds all configuration for the application
 type Config struct {
-	AMQP     AMQPConfig
 	Server   ServerConfig
 	Pixlet   PixletConfig
 	Redis    RedisConfig
 	LogLevel string
-}
-
-// AMQPConfig holds AMQP-related configuration
-type AMQPConfig struct {
-	URL           string
-	Exchange      string
-	QueueName     string
-	RoutingKey    string
-	ResultQueue   string
-	PrefetchCount int // QoS prefetch count for load balancing
 }
 
 // ServerConfig holds server-related configuration
@@ -53,14 +42,6 @@ func Load() (*Config, error) {
 	_ = godotenv.Load()
 
 	cfg := &Config{
-		AMQP: AMQPConfig{
-			URL:           getEnv("AMQP_URL", "amqp://guest:guest@localhost:5672/"),
-			Exchange:      getEnv("AMQP_EXCHANGE", "matrx"),
-			QueueName:     getEnv("AMQP_QUEUE", "matrx.render_requests"),
-			RoutingKey:    getEnv("AMQP_ROUTING_KEY", "renderer_requests"),
-			ResultQueue:   getEnv("AMQP_RESULT_QUEUE", "matrx.{DEVICE_ID}"), // Template - will be replaced with actual device ID
-			PrefetchCount: getEnvAsInt("AMQP_PREFETCH_COUNT", 1),            // Default to 1 for fair distribution
-		},
 		Server: ServerConfig{
 			Port:         getEnvAsInt("SERVER_PORT", 8080),
 			ReadTimeout:  getEnvAsInt("SERVER_READ_TIMEOUT", 10),
@@ -72,7 +53,7 @@ func Load() (*Config, error) {
 			KeyEncryptionKeyB64:    getEnv("PIXLET_KEY_ENCRYPTION_KEY_B64", ""),
 		},
 		Redis: RedisConfig{
-			Addr:     getEnv("REDIS_ADDR", "localhost:6379"),
+			Addr:     getRedisAddr(),
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       getEnvAsInt("REDIS_DB", 0),
 		},
@@ -98,4 +79,19 @@ func getEnvAsInt(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+// getRedisAddr gets Redis address, supporting both REDIS_URL and REDIS_ADDR formats
+func getRedisAddr() string {
+	// Check for REDIS_URL first (format: redis://host:port)
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		// Parse redis://host:port to host:port
+		if redisURL[:8] == "redis://" {
+			return redisURL[8:]
+		}
+		return redisURL
+	}
+
+	// Fall back to REDIS_ADDR
+	return getEnv("REDIS_ADDR", "localhost:6379")
 }

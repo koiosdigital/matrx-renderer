@@ -1,0 +1,72 @@
+# Git and version control
+
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+
+README.md
+\*.md
+docs/
+
+# Development files
+
+.env
+.env.local
+.env.\*.local
+
+# IDE and editor files
+
+.vscode/
+.idea/
+_.swp
+_.swo
+\*~
+
+# OS generated files
+
+.DS*Store
+.DS_Store?
+.*\*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+
+matrx-renderer
+_.exe
+_.so
+\*.dylib
+
+# Test files
+
+\*\_test.go
+test/
+coverage.txt
+coverage.html
+
+# CI/CD files
+
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+
+# Docker files (except Dockerfile)
+
+docker-compose\*.yml
+.dockerignore
+
+# Temporary files
+
+tmp/
+temp/
+_.tmp
+_.log
+
+# Legacy/backup directories
+
+internal/amqp_legacy/
+apps/

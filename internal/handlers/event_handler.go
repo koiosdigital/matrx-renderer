@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// EventHandler implements the AMQP EventHandler interface
 type EventHandler struct {
 	pixletProcessor *pixlet.Processor
 	logger          *zap.Logger
@@ -63,7 +62,6 @@ func (h *EventHandler) Handle(ctx context.Context, request *models.RenderRequest
 		return nil, fmt.Errorf("device.id is required")
 	}
 
-	// Process the render request directly - errors are logged but not sent via AMQP
 	result, err := h.pixletProcessor.RenderApp(ctx, request)
 	if err != nil {
 		h.logger.Error("Render request failed",
@@ -80,7 +78,7 @@ func (h *EventHandler) Handle(ctx context.Context, request *models.RenderRequest
 			RenderOutput: "", // Empty output on error
 			ProcessedAt:  time.Now(),
 		}
-		return result2, err // Don't send error responses via AMQP as requested
+		return result2, err
 	}
 
 	h.logger.Info("Render request completed successfully",

@@ -29,8 +29,26 @@ func NewAppHandler(processor *pixlet.Processor, logger *zap.Logger) *AppHandler 
 
 // RegisterRoutes registers the app management routes
 func (h *AppHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/health", h.handleHealth)
 	mux.HandleFunc("/apps", h.handleApps)
 	mux.HandleFunc("/apps/", h.handleAppDetails)
+}
+
+// handleHealth handles GET /health - returns service health status
+func (h *AppHandler) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Simple health check - just return OK if we can respond
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "healthy",
+		"service": "matrx-renderer",
+		"version": "1.0.0",
+	})
 }
 
 // handleApps handles GET /apps - returns list of all apps

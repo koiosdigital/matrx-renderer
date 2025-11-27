@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/koios/matrx-renderer/internal/amqp"
 	"github.com/koios/matrx-renderer/internal/config"
 	"github.com/koios/matrx-renderer/internal/handlers"
+	"github.com/koios/matrx-renderer/internal/redis"
 	"go.uber.org/zap"
 )
 
@@ -31,21 +31,21 @@ func main() {
 	}
 
 	// Create context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
+	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize AMQP connection
-	amqpConn, err := amqp.NewConnection(cfg.AMQP, logger)
+	// Initialize Redis client
+	redisClient, err := redis.NewClient(cfg.Redis, logger)
 	if err != nil {
-		logger.Fatal("Failed to create AMQP connection", zap.Error(err))
+		logger.Fatal("Failed to create Redis client", zap.Error(err))
 	}
-	defer amqpConn.Close()
+	defer redisClient.Close()
 
 	// Initialize event handler
 	eventHandler := handlers.NewEventHandler(logger, cfg)
 
-	// Initialize consumer
-	consumer := amqp.NewConsumer(amqpConn, eventHandler, logger)
+	// Initialize Redis consumer
+	consumer := redis.NewConsumer(redisClient, eventHandler, logger)
 
 	// Create HTTP server for app management API
 	mux := http.NewServeMux()
@@ -68,17 +68,18 @@ func main() {
 		}
 	}()
 
-	// Start consuming messages
+	// Start consuming messages from Redis
 	go func() {
-		if err := consumer.Start(ctx, cfg.AMQP.QueueName); err != nil {
-			logger.Error("Consumer failed", zap.Error(err))
+		if err := consumer.Start(); err != nil {
+			logger.Error("Redis consumer failed", zap.Error(err))
 			cancel()
 		}
 	}()
 
 	logger.Info("Server started",
-		zap.String("input_queue", cfg.AMQP.QueueName),
-		zap.String("output_queue_pattern", "matrx.{device_id}"))
+		zap.String("redis_addr", cfg.Redis.Addr),
+		zap.String("input_channel", "matrx:render_requests"),
+		zap.String("output_channel_pattern", "device:{device_id}"))
 
 	// Wait for interrupt signal to gracefully shutdown
 	quit := make(chan os.Signal, 1)
@@ -95,6 +96,9 @@ func main() {
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP server shutdown failed", zap.Error(err))
 	}
+
+	// Stop Redis consumer
+	consumer.Stop()
 
 	// Cancel the main context to stop all operations
 	cancel()

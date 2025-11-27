@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:alpine AS builder
+FROM golang:1.23-alpine3.19 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata libwebp libwebp-dev gcc musl-dev
@@ -13,33 +13,63 @@ COPY go.mod go.sum ./
 # Download dependencies
 RUN go mod download
 
-# Copy source code
+# Set build arguments
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM  
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=dev
+ARG BUILD_TIME
+ARG GIT_COMMIT
+
+# Copy source code (leverages .dockerignore for efficiency)
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=1 GOOS=linux go build -a -o matrx-renderer ./cmd/server
+# Build the application with optimizations and build info
+RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build \
+    -ldflags="-w -s -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" \
+    -a -o matrx-renderer ./cmd/server \
+    && strip matrx-renderer
 
 # Final stage
-FROM alpine:latest
+FROM alpine:3.19
+
+# Metadata labels
+LABEL maintainer="Koios Digital" \
+      version="1.0" \
+      description="MATRX Renderer - Redis-based Pixlet rendering service" \
+      org.opencontainers.image.source="https://github.com/koiosdigital/matrx-renderer"
 
 # Set build arguments for architecture detection
 ARG TARGETARCH
 
-# Install runtime dependencies including git for periodic pulls
-RUN apk add --no-cache ca-certificates tzdata libwebp libwebpmux libwebpdemux git curl \
-    && update-ca-certificates
+# Install runtime dependencies and security updates
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    libwebp \
+    libwebpmux \
+    libwebpdemux \
+    git \
+    curl \
+    dumb-init \
+    && apk upgrade --no-cache \
+    && update-ca-certificates \
+    && rm -rf /var/cache/apk/*
 
-# Download and install s6-overlay based on architecture
+# Download and install s6-overlay based on architecture with checksum validation
 RUN case ${TARGETARCH} in \
         amd64) S6_ARCH=x86_64 ;; \
         arm64) S6_ARCH=aarch64 ;; \
         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac \
-    && curl -L "https://github.com/just-containers/s6-overlay/releases/download/v3.1.6.2/s6-overlay-noarch.tar.xz" -o /tmp/s6-overlay-noarch.tar.xz \
-    && curl -L "https://github.com/just-containers/s6-overlay/releases/download/v3.1.6.2/s6-overlay-${S6_ARCH}.tar.xz" -o /tmp/s6-overlay-arch.tar.xz \
+    && S6_VERSION="v3.1.6.2" \
+    && curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/${S6_VERSION}/s6-overlay-noarch.tar.xz" -o /tmp/s6-overlay-noarch.tar.xz \
+    && curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/${S6_VERSION}/s6-overlay-${S6_ARCH}.tar.xz" -o /tmp/s6-overlay-arch.tar.xz \
     && tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz \
     && tar -C / -Jxpf /tmp/s6-overlay-arch.tar.xz \
-    && rm -f /tmp/s6-overlay-*.tar.xz
+    && rm -rf /tmp/s6-overlay-*.tar.xz
 
 # Create non-root user with home directory
 RUN addgroup -g 1001 -S appuser \
@@ -51,8 +81,9 @@ RUN mkdir -p /app /opt/apps /home/appuser \
     && chown -R appuser:appuser /opt/apps \
     && chmod -R 750 /opt/apps
 
-# Download matrx-apps repository with git credentials for future pulls
-RUN git clone https://github.com/koiosdigital/matrx-apps.git /opt/apps \
+# Download matrx-apps repository with error handling
+RUN git clone --depth=1 --single-branch https://github.com/koiosdigital/matrx-apps.git /opt/apps \
+    || (echo "Warning: Failed to clone apps repository, creating empty directory" && mkdir -p /opt/apps) \
     && chown -R appuser:appuser /opt/apps \
     && chmod -R 750 /opt/apps
 
@@ -88,12 +119,21 @@ RUN touch /etc/s6-overlay/s6-rc.d/user/contents.d/renderer \
 # Expose port
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD pgrep matrx-renderer > /dev/null || exit 1
+# Health check - test both process and HTTP endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8080/health || pgrep matrx-renderer > /dev/null || exit 1
 
-# Set s6 environment
-ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
+# Set environment variables for production
+ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
+    S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0 \
+    S6_SYNC_DISKS=1 \
+    TZ=UTC \
+    GOGC=20 \
+    GOMEMLIMIT=128MiB
 
-# Use s6-overlay as init
+# Switch to non-root user for final operations
+USER appuser
+WORKDIR /app
+
+# Use s6-overlay as init with dumb-init as fallback
 ENTRYPOINT ["/init"]

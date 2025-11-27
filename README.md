@@ -1,10 +1,10 @@
 # MATRX Renderer
 
-A Go-based AMQP event processor for rendering Tidbyt Pixlet applications. This service receives render requests via AMQP, processes them using Pixlet, and returns results through AMQP queues.
+A Go-based Redis pub/sub event processor for rendering Tidbyt Pixlet applications. This service receives render requests via Redis channels, processes them using Pixlet, and returns results through device-specific Redis channels.
 
 ## Features
 
-- **AMQP Integration**: Consumes render requests and publishes results via RabbitMQ
+- **Redis Pub/Sub**: Consumes render requests and publishes results via Redis (lightweight, high-performance)
 - **Pixlet Processing**: Renders Tidbyt applications using the Pixlet engine
 - **Redis Caching**: Distributed caching layer with app/device scoped keys
 - **12-Factor App**: Environment-based configuration following 12-factor principles
@@ -16,28 +16,26 @@ A Go-based AMQP event processor for rendering Tidbyt Pixlet applications. This s
 ## Architecture
 
 ```
-AMQP Producer → RabbitMQ → MATRX Renderer → Pixlet → RabbitMQ → AMQP Consumer
+WebSocket API → Redis: "matrx:render_requests" → MATRX Renderer → Pixlet → Redis: "device:{device_id}:responses" → WebSocket API
 ```
 
 The service:
 
-1. Consumes render requests from the `matrx.renderer_requests` queue
+1. Subscribes to render requests from the `matrx:render_requests` Redis channel
 2. Validates and processes requests using Pixlet
-3. Publishes results to device-specific queues: `matrx.{DEVICE_ID}`
-4. Handles errors gracefully with proper logging
+3. Publishes results to device-specific Redis channels: `device:{device_id}:responses`
+4. Handles errors gracefully with proper logging and empty result responses
 
 ## Configuration
 
 All configuration is done via environment variables:
 
-### AMQP Settings
+### Redis Settings
 
-- `AMQP_URL`: RabbitMQ connection string (default: `amqp://guest:guest@localhost:5672/`)
-- `AMQP_EXCHANGE`: Exchange name (default: `matrx`)
-- `AMQP_QUEUE`: Input queue name (default: `matrx.renderer_requests`)
-- `AMQP_ROUTING_KEY`: Routing key for input queue (default: `renderer_requests`)
-- `AMQP_RESULT_QUEUE`: Result queue template (default: `matrx.{DEVICE_ID}`) - dynamic per device
-- `AMQP_PREFETCH_COUNT`: QoS prefetch count for load balancing (default: `1`)
+- `REDIS_URL`: Redis connection string (default: `redis://localhost:6379`)
+- `REDIS_ADDR`: Alternative Redis address format (default: `localhost:6379`)
+- `REDIS_PASSWORD`: Redis password (default: empty)
+- `REDIS_DB`: Redis database number (default: `0`)
 
 ### Server Settings
 
@@ -125,7 +123,7 @@ The Docker build process automatically downloads apps from the [koiosdigital/mat
 }
 ```
 
-**Note**: On error, the service logs the error to console but does not send an AMQP response message.
+**Note**: On error, the service logs the error to console.
 
 ## Queue Routing
 
@@ -156,17 +154,10 @@ The MATRX renderer is designed for horizontal scaling with multiple instances:
 
 ### Key Features
 
-1. **Fair Load Distribution**: Each instance processes only one message at a time (configurable via `AMQP_PREFETCH_COUNT`)
+1. **Fair Load Distribution**: Each instance processes only one message at a time.
 2. **Message Safety**: Manual acknowledgment ensures messages are only removed after successful processing
 3. **Automatic Failover**: Failed messages are requeued for other instances to process
 4. **Instance Identification**: Each consumer has a unique tag for monitoring and debugging
-
-### Configuration
-
-- `AMQP_PREFETCH_COUNT`: Number of unacknowledged messages per consumer (default: `1`)
-  - `1`: Fair round-robin distribution (recommended for most cases)
-  - `>1`: Higher throughput but less fair distribution
-  - `0`: No limit (not recommended for scaling)
 
 ### Scaling Guidelines
 
@@ -195,11 +186,6 @@ spec:
       containers:
         - name: renderer
           image: matrx-renderer:latest
-          env:
-            - name: AMQP_URL
-              value: "amqp://user:pass@rabbitmq:5672/"
-            - name: AMQP_PREFETCH_COUNT
-              value: "1" # Fair distribution
           resources:
             requests:
               cpu: 500m
@@ -262,16 +248,6 @@ Build the image:
 
 ```bash
 docker build -t matrx-renderer .
-```
-
-Run with environment variables:
-
-```bash
-docker run -d \
-  --name matrx-renderer \
-  -e AMQP_URL=amqp://user:pass@rabbitmq:5672/ \
-  -v /path/to/apps:/opt/apps:ro \
-  matrx-renderer
 ```
 
 ### Kubernetes
