@@ -61,46 +61,61 @@ func (c *Consumer) Stop() {
 	c.cancel()
 }
 
-// consumeMessages handles the actual message consumption
+// consumeMessages handles the actual message consumption from Redis Streams
 func (c *Consumer) consumeMessages() error {
-	pubsub, ch, err := c.client.SubscribeToRenderRequests()
-	if err != nil {
-		return err
-	}
-	defer pubsub.Close()
-
-	c.logger.Info("Started consuming Redis messages")
+	c.logger.Info("Started consuming Redis stream messages")
 
 	for {
 		select {
 		case <-c.ctx.Done():
 			return nil
-		case msg := <-ch:
-			if msg == nil {
+		default:
+			// Read messages from stream with blocking timeout
+			streams, err := c.client.ReadFromStream(c.ctx, 10, 5*time.Second)
+			if err != nil {
+				// Check if connection is healthy
+				if !c.client.IsHealthy() {
+					return fmt.Errorf("Redis connection unhealthy, will reconnect")
+				}
+				c.logger.Error("Error reading from stream", zap.Error(err))
+				time.Sleep(1 * time.Second)
 				continue
 			}
 
-			c.handleMessage(msg)
-		case <-time.After(30 * time.Second):
-			// Periodic health check to ensure subscription is still active
-			if !c.client.IsHealthy() {
-				return fmt.Errorf("Redis connection unhealthy, will reconnect")
+			// Process messages from the stream
+			for _, stream := range streams {
+				for _, message := range stream.Messages {
+					c.handleStreamMessage(message)
+				}
 			}
 		}
 	}
 }
 
-// handleMessage processes a single Redis message
-func (c *Consumer) handleMessage(msg *redis.Message) {
-	c.logger.Debug("Received render request",
-		zap.String("channel", msg.Channel),
-		zap.String("payload_length", fmt.Sprintf("%d", len(msg.Payload))))
+// handleStreamMessage processes a single Redis Stream message
+func (c *Consumer) handleStreamMessage(msg redis.XMessage) {
+	c.logger.Debug("Received render request from stream",
+		zap.String("message_id", msg.ID),
+		zap.Int("fields_count", len(msg.Values)))
+
+	// Extract the payload from the stream message
+	payload, ok := msg.Values["payload"].(string)
+	if !ok {
+		c.logger.Error("Failed to extract payload from stream message",
+			zap.String("message_id", msg.ID))
+		// Acknowledge the message anyway to prevent reprocessing
+		_ = c.client.AcknowledgeMessage(c.ctx, msg.ID)
+		return
+	}
 
 	var request models.RenderRequest
-	if err := json.Unmarshal([]byte(msg.Payload), &request); err != nil {
+	if err := json.Unmarshal([]byte(payload), &request); err != nil {
 		c.logger.Error("Failed to unmarshal render request",
 			zap.Error(err),
-			zap.String("payload", msg.Payload))
+			zap.String("message_id", msg.ID),
+			zap.String("payload", payload))
+		// Acknowledge the message to prevent reprocessing bad data
+		_ = c.client.AcknowledgeMessage(c.ctx, msg.ID)
 		return
 	}
 
@@ -109,6 +124,7 @@ func (c *Consumer) handleMessage(msg *redis.Message) {
 	if err != nil {
 		c.logger.Error("Failed to handle render request",
 			zap.Error(err),
+			zap.String("message_id", msg.ID),
 			zap.String("app_id", request.AppID),
 			zap.String("device_id", request.Device.ID))
 
@@ -123,11 +139,26 @@ func (c *Consumer) handleMessage(msg *redis.Message) {
 		}
 	}
 
-	// Publish the result to device-specific channel
+	// Publish the result to device-specific pub/sub channel
 	if err := c.client.PublishRenderResult(result); err != nil {
 		c.logger.Error("Failed to publish render result",
 			zap.Error(err),
+			zap.String("message_id", msg.ID),
 			zap.String("app_id", request.AppID),
 			zap.String("device_id", request.Device.ID))
+		// Don't acknowledge if we failed to publish - allow retry
+		return
+	}
+
+	// Acknowledge the message after successful processing and publishing
+	if err := c.client.AcknowledgeMessage(c.ctx, msg.ID); err != nil {
+		c.logger.Error("Failed to acknowledge message",
+			zap.Error(err),
+			zap.String("message_id", msg.ID))
+	} else {
+		c.logger.Debug("Message processed and acknowledged",
+			zap.String("message_id", msg.ID),
+			zap.String("device_id", request.Device.ID),
+			zap.String("app_id", request.AppID))
 	}
 }

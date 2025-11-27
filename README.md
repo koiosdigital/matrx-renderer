@@ -16,15 +16,40 @@ A Go-based Redis pub/sub event processor for rendering Tidbyt Pixlet application
 ## Architecture
 
 ```
-WebSocket API → Redis: "matrx:render_requests" → MATRX Renderer → Pixlet → Redis: "device:{device_id}:responses" → WebSocket API
+API → Redis Stream: "matrx:render_requests" → [Consumer Group] → MATRX Renderer (scalable) → Pixlet → Redis Pub/Sub: "device:{device_id}" → Device
 ```
 
-The service:
+The service uses a hybrid Redis architecture optimized for both work distribution and real-time delivery:
 
-1. Subscribes to render requests from the `matrx:render_requests` Redis channel
-2. Validates and processes requests using Pixlet
-3. Publishes results to device-specific Redis channels: `device:{device_id}:responses`
-4. Handles errors gracefully with proper logging and empty result responses
+### Redis Streams (Input - Work Queue Pattern)
+
+- **Stream**: `matrx:render_requests`
+- **Consumer Group**: Enables horizontal scaling with automatic load balancing
+- **Features**:
+  - Multiple render workers can consume from the same stream
+  - Consumer groups ensure each message is processed exactly once
+  - Messages persist until explicitly acknowledged (XACK)
+  - Failed messages can be retried or moved to dead letter queue
+  - Perfect for distributed work processing
+
+### Redis Pub/Sub (Output - Real-time Delivery)
+
+- **Channels**: `device:{device_id}` (per-device channels)
+- **Features**:
+  - Instant delivery to subscribed devices
+  - Simple, fast, ephemeral messages
+  - No message backlog or cleanup needed
+  - Perfect for real-time device control
+
+### Processing Flow
+
+1. Device/API publishes render request to `matrx:render_requests` stream
+2. Render worker consumes message from stream using consumer group
+3. Worker validates and processes request using Pixlet
+4. Worker publishes result to device-specific `device:{device_id}` pub/sub channel
+5. Device receives result instantly via pub/sub subscription
+6. Worker acknowledges message in stream (XACK)
+7. Handles errors gracefully with proper logging and empty result responses
 
 ## Configuration
 
@@ -36,6 +61,8 @@ All configuration is done via environment variables:
 - `REDIS_ADDR`: Alternative Redis address format (default: `localhost:6379`)
 - `REDIS_PASSWORD`: Redis password (default: empty)
 - `REDIS_DB`: Redis database number (default: `0`)
+- `REDIS_CONSUMER_GROUP`: Consumer group name for streams (default: `matrx-renderer-group`)
+- `REDIS_CONSUMER_NAME`: Consumer name (auto-generated if not provided: `{hostname}-{timestamp}`)
 
 ### Server Settings
 
@@ -94,11 +121,80 @@ The Docker build process automatically downloads apps from the [koiosdigital/mat
 
 ## Message Format
 
-### Render Request
+### Publishing Render Requests
+
+To send a render request, publish to the `matrx:render_requests` Redis Stream:
+
+**Using Redis CLI:**
+
+```bash
+redis-cli XADD matrx:render_requests * payload '{"type":"render_request","uuid":"req-123","app_id":"clock","device":{"id":"CN","width":64,"height":32},"params":{"timezone":"America/New_York"}}'
+```
+
+**Using redis-py (Python):**
+
+```python
+import redis
+import json
+
+r = redis.Redis(host='localhost', port=6379, db=0)
+
+request = {
+    "type": "render_request",
+    "uuid": "req-123",
+    "app_id": "clock",
+    "device": {
+        "id": "CN",
+        "width": 64,
+        "height": 32
+    },
+    "params": {
+        "timezone": "America/New_York"
+    }
+}
+
+r.xadd('matrx:render_requests', {'payload': json.dumps(request)})
+```
+
+**Using go-redis (Go):**
+
+```go
+import (
+    "encoding/json"
+    "github.com/redis/go-redis/v9"
+)
+
+rdb := redis.NewClient(&redis.Options{
+    Addr: "localhost:6379",
+})
+
+request := map[string]interface{}{
+    "type": "render_request",
+    "uuid": "req-123",
+    "app_id": "clock",
+    "device": map[string]interface{}{
+        "id": "CN",
+        "width": 64,
+        "height": 32,
+    },
+    "params": map[string]string{
+        "timezone": "America/New_York",
+    },
+}
+
+payload, _ := json.Marshal(request)
+rdb.XAdd(ctx, &redis.XAddArgs{
+    Stream: "matrx:render_requests",
+    Values: map[string]interface{}{"payload": string(payload)},
+})
+```
+
+### Render Request Format
 
 ```json
 {
   "type": "render_request",
+  "uuid": "unique-request-id",
   "app_id": "clock",
   "device": {
     "id": "device-uuid-or-string",
@@ -112,10 +208,31 @@ The Docker build process automatically downloads apps from the [koiosdigital/mat
 }
 ```
 
-### Render Result
+### Render Result Format
+
+Results are published to device-specific pub/sub channels: `device:{device_id}`
+
+**Subscribe to results:**
+
+```bash
+# Redis CLI
+redis-cli SUBSCRIBE device:CN
+
+# Python
+import redis
+r = redis.Redis()
+pubsub = r.pubsub()
+pubsub.subscribe('device:CN')
+for message in pubsub.listen():
+    print(message)
+```
+
+**Result payload:**
 
 ```json
 {
+  "type": "render_result",
+  "uuid": "unique-request-id",
   "device_id": "device-uuid-or-string",
   "app_id": "clock",
   "render_output": "base64-encoded-webp-data",
@@ -195,11 +312,31 @@ spec:
               memory: 1Gi
 ```
 
+### Horizontal Scaling
+
+The renderer is designed for horizontal scaling using Redis Streams consumer groups:
+
+1. **Automatic Load Balancing**: Redis consumer groups distribute messages across all instances
+2. **No Configuration Changes**: Simply increase replica count - each instance auto-registers
+3. **Exactly-Once Processing**: Consumer groups ensure each message is processed by only one worker
+4. **Fault Tolerance**: Failed instances don't lose messages - they can be reassigned to healthy workers
+
+**Scaling Example:**
+
+```bash
+# Scale to 5 instances
+kubectl scale deployment matrx-renderer --replicas=5
+
+# Scale based on CPU usage
+kubectl autoscale deployment matrx-renderer --cpu-percent=70 --min=3 --max=10
+```
+
 ### Monitoring
 
 Monitor these metrics for scaling decisions:
 
-- Queue depth in `matrx.renderer_requests`
+- Stream pending messages: `XPENDING matrx:render_requests`
+- Consumer group lag: Messages not yet acknowledged
 - Message processing rate per instance
 - CPU/Memory usage per instance
 - Error rates and failed message counts

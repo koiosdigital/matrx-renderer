@@ -78,7 +78,9 @@ func main() {
 
 	logger.Info("Server started",
 		zap.String("redis_addr", cfg.Redis.Addr),
-		zap.String("input_channel", "matrx:render_requests"),
+		zap.String("input_stream", "matrx:render_requests"),
+		zap.String("consumer_group", cfg.Redis.ConsumerGroup),
+		zap.String("consumer_name", cfg.Redis.ConsumerName),
 		zap.String("output_channel_pattern", "device:{device_id}"))
 
 	// Wait for interrupt signal to gracefully shutdown

@@ -31,9 +31,11 @@ type PixletConfig struct {
 
 // RedisConfig holds Redis-related configuration
 type RedisConfig struct {
-	Addr     string
-	Password string
-	DB       int
+	Addr          string
+	Password      string
+	DB            int
+	ConsumerGroup string // Consumer group name for streams
+	ConsumerName  string // Consumer name (unique per instance)
 }
 
 // Load loads configuration from environment variables
@@ -53,9 +55,11 @@ func Load() (*Config, error) {
 			KeyEncryptionKeyB64:    getEnv("PIXLET_KEY_ENCRYPTION_KEY_B64", ""),
 		},
 		Redis: RedisConfig{
-			Addr:     getRedisAddr(),
-			Password: getEnv("REDIS_PASSWORD", ""),
-			DB:       getEnvAsInt("REDIS_DB", 0),
+			Addr:          getRedisAddr(),
+			Password:      getEnv("REDIS_PASSWORD", ""),
+			DB:            getEnvAsInt("REDIS_DB", 0),
+			ConsumerGroup: getEnv("REDIS_CONSUMER_GROUP", "matrx-renderer-group"),
+			ConsumerName:  getEnv("REDIS_CONSUMER_NAME", ""),
 		},
 		LogLevel: getEnv("LOG_LEVEL", "info"),
 	}
