@@ -103,8 +103,8 @@ RUN mkdir -p /etc/s6-overlay/s6-rc.d/renderer/dependencies.d \
 # Create initial-clone oneshot service (runs once at startup)
 RUN echo "oneshot" > /etc/s6-overlay/s6-rc.d/initial-clone/type \
     && echo "appuser" > /etc/s6-overlay/s6-rc.d/initial-clone/user \
-    && printf '#!/command/with-contenv sh\necho "Performing initial git pull..."\nexport HOME=/home/appuser\ngit config --global --add safe.directory /opt/apps\ngit config --global user.email "renderer@koios.digital"\ngit config --global user.name "Matrx Renderer"\ncd /opt/apps\nif git pull origin main; then\n    echo "Initial git pull completed successfully"\nelse\n    echo "Initial git pull failed, but continuing..."\nfi\n' > /etc/s6-overlay/s6-rc.d/initial-clone/run \
-    && chmod +x /etc/s6-overlay/s6-rc.d/initial-clone/run
+    && printf '#!/command/with-contenv sh\necho "Performing initial git pull..."\nexport HOME=/home/appuser\ngit config --global --add safe.directory /opt/apps\ngit config --global user.email "renderer@koios.digital"\ngit config --global user.name "Matrx Renderer"\ncd /opt/apps\nif git pull origin main; then\n    echo "Initial git pull completed successfully"\nelse\n    echo "Initial git pull failed, but continuing..."\nfi\n' > /etc/s6-overlay/s6-rc.d/initial-clone/up \
+    && chmod +x /etc/s6-overlay/s6-rc.d/initial-clone/up
 
 # Create renderer service with dependency on initial-clone
 RUN echo "longrun" > /etc/s6-overlay/s6-rc.d/renderer/type \
