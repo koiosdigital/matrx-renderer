@@ -72,7 +72,7 @@ def main():
 				Width:  64,
 				Height: 32,
 			},
-			Params: map[string]string{},
+			Params: map[string]interface{}{},
 		}
 
 		ctx := context.Background()
@@ -107,7 +107,7 @@ def main():
 				Width:  64,
 				Height: 32,
 			},
-			Params: map[string]string{},
+			Params: map[string]interface{}{},
 		}
 
 		ctx := context.Background()

@@ -184,9 +184,17 @@ func (p *Processor) RenderApp(ctx context.Context, request *models.RenderRequest
 	// Prepare config with device dimensions and request params
 	config := make(map[string]string)
 
-	// Add request params first
+	// Add request params first, converting interface{} values to strings
 	for key, value := range request.Params {
-		config[key] = value
+		switch v := value.(type) {
+		case string:
+			config[key] = v
+		case nil:
+			config[key] = ""
+		default:
+			// Convert other types (numbers, bools, etc.) to string using fmt
+			config[key] = fmt.Sprintf("%v", v)
+		}
 	}
 
 	// Set device dimensions, allowing them to override request params if specified
