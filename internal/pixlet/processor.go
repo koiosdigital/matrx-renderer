@@ -259,6 +259,27 @@ func (p *Processor) GetAppRegistry() *models.AppRegistry {
 	return p.appRegistry
 }
 
+// RefreshAppRegistry reloads apps from the filesystem
+func (p *Processor) RefreshAppRegistry() error {
+	p.logger.Info("Refreshing app registry from filesystem",
+		zap.String("apps_path", p.config.AppsPath))
+
+	// Create a new registry and load apps
+	newRegistry := models.NewAppRegistry()
+	if err := newRegistry.LoadApps(p.config.AppsPath); err != nil {
+		return fmt.Errorf("failed to load apps: %w", err)
+	}
+
+	// Replace the current registry
+	p.appRegistry = newRegistry
+
+	apps := newRegistry.GetAppsList()
+	p.logger.Info("App registry refreshed successfully",
+		zap.Int("app_count", len(apps)))
+
+	return nil
+}
+
 // GetAppSchema returns the schema for a specific app
 func (p *Processor) GetAppSchema(ctx context.Context, appID string) (*schema.Schema, error) {
 	// Validate app ID (security: prevent path traversal)

@@ -31,6 +31,7 @@ func NewAppHandler(processor *pixlet.Processor, logger *zap.Logger) *AppHandler 
 func (h *AppHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", h.handleHealth)
 	mux.HandleFunc("/apps", h.handleApps)
+	mux.HandleFunc("/apps/refresh", h.handleAppsRefresh)
 	mux.HandleFunc("/apps/", h.handleAppDetails)
 }
 
@@ -69,6 +70,41 @@ func (h *AppHandler) handleApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Debug("Served apps list", zap.Int("count", len(apps)))
+}
+
+// handleAppsRefresh handles POST /apps/refresh - reloads the app registry
+func (h *AppHandler) handleAppsRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	h.logger.Info("Refreshing app registry...")
+
+	// Reload the app registry from the filesystem
+	if err := h.processor.RefreshAppRegistry(); err != nil {
+		h.logger.Error("Failed to refresh app registry", zap.Error(err))
+		http.Error(w, "Failed to refresh apps", http.StatusInternalServerError)
+		return
+	}
+
+	registry := h.processor.GetAppRegistry()
+	apps := registry.GetAppsList()
+
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]interface{}{
+		"status":    "success",
+		"message":   "App registry refreshed successfully",
+		"app_count": len(apps),
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error("Failed to encode refresh response", zap.Error(err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("App registry refreshed successfully", zap.Int("app_count", len(apps)))
 }
 
 // handleAppDetails handles:
