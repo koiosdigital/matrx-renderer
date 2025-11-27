@@ -66,15 +66,10 @@ func (r *AppRegistry) LoadApps(appsDir string) error {
 	// Clear existing apps
 	r.apps = make(map[string]*AppManifest)
 
-	// Structure: /opt/apps/apps/{app_id}/manifest.yaml
-	fmt.Printf("DEBUG: Loading apps from directory: %s\n", appsDir)
-
 	entries, err := os.ReadDir(appsDir)
 	if err != nil {
 		return fmt.Errorf("failed to read apps directory: %w", err)
 	}
-
-	fmt.Printf("DEBUG: Found %d entries in apps directory\n", len(entries))
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -82,20 +77,15 @@ func (r *AppRegistry) LoadApps(appsDir string) error {
 		}
 
 		appDir := filepath.Join(appsDir, entry.Name())
-		fmt.Printf("DEBUG: Processing app directory: %s\n", appDir)
 
 		manifest, err := LoadManifest(appDir)
 		if err != nil {
-			// Log error but continue loading other apps
-			fmt.Printf("DEBUG: Failed to load manifest for %s: %v\n", entry.Name(), err)
 			continue
 		}
 
-		fmt.Printf("DEBUG: Successfully loaded app: %s\n", manifest.ID)
 		r.apps[manifest.ID] = manifest
 	}
 
-	fmt.Printf("DEBUG: Total apps loaded: %d\n", len(r.apps))
 	return nil
 }
 
