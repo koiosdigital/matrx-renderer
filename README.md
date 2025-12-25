@@ -51,6 +51,18 @@ The service uses a hybrid Redis architecture optimized for both work distributio
 6. Worker acknowledges message in stream (XACK)
 7. Handles errors gracefully with proper logging and empty result responses
 
+## HTTP API
+
+Alongside the Redis worker pipeline, the renderer exposes a lightweight HTTP API that mirrors the same schema-driven workflows:
+
+- `GET /health` – simple service heartbeat.
+- `GET /apps` and `GET /apps/{id}` – enumerate loaded Pixlet apps from the registry.
+- `GET /apps/{id}/schema` – retrieve the Pixlet app schema; `POST /apps/{id}/schema` validates a configuration. **Send the configuration object at the JSON root** (no nested `config` wrapper). The response includes normalized defaults plus structured field errors.
+- `POST /apps/{id}/render` – validates the provided configuration and returns a JSON payload containing the base64-encoded WebP render output along with the normalized config. Optional query parameters `width`, `height`, and `device_id` control rendering dimensions (defaults 64×32) and logging metadata.
+- `GET /apps/{id}/preview.webp` / `GET /apps/{id}/preview.gif` – render previews using schema defaults (no request body) and stream the binary WebP or GIF response. Use the optional `width` and `height` query parameters to override device dimensions.
+
+These HTTP utilities are ideal for local testing, schema validation, or generating previews without publishing into Redis.
+
 ## Configuration
 
 All configuration is done via environment variables:

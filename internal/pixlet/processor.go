@@ -120,112 +120,25 @@ func NewProcessorWithRedis(cfg *config.PixletConfig, redisConfig *config.RedisCo
 
 // RenderApp renders a Pixlet app with the given configuration using the runtime
 func (p *Processor) RenderApp(ctx context.Context, request *models.RenderRequest) (*models.RenderResult, error) {
-	// Validate app ID (security: prevent path traversal)
-	if strings.Contains(request.AppID, "..") || strings.Contains(request.AppID, "/") {
-		return nil, fmt.Errorf("invalid app ID: %s", request.AppID)
-	}
-
-	// Set up cache for this request
-	var requestCache runtime.Cache
-	if p.redisCache != nil {
-		requestCache = p.redisCache
-	} else {
-		requestCache = p.cache
-	}
-
-	// Initialize runtime with the request-specific cache
-	runtime.InitHTTP(requestCache)
-	runtime.InitCache(requestCache)
-
-	// Get app from registry
-	app, exists := p.appRegistry.GetApp(request.AppID)
-	if !exists {
-		return nil, fmt.Errorf("app not found: %s", request.AppID)
-	}
-
-	// Use the star file path from the manifest
-	appPath := app.StarFilePath
-
-	// Set device dimensions in globals
-	globals.Width = request.Device.Width
-	globals.Height = request.Device.Height
-
-	// Create context with timeout
-	renderCtx, cancel := context.WithTimeout(ctx, p.timeout)
-	defer cancel()
-
-	// Set up filesystem for the app
-	var appFS fs.FS
-	info, err := os.Stat(appPath)
+	screens, err := p.renderScreens(ctx, request.AppID, request.Params, request.Device)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stat app path: %w", err)
+		return nil, err
 	}
 
-	if info.IsDir() {
-		appFS = os.DirFS(appPath)
-	} else {
-		if !strings.HasSuffix(appPath, ".star") {
-			return nil, fmt.Errorf("app file must have suffix .star: %s", appPath)
-		}
-		appFS = tools.NewSingleFileFS(appPath)
-	}
-
-	// Create applet with silent output (no print statements)
-	opts := []runtime.AppletOption{
-		runtime.WithPrintDisabled(),
-		runtime.WithSecretDecryptionKey(&p.secretDecryptionKey),
-	}
-
-	applet, err := runtime.NewAppletFromFS(request.AppID, appFS, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load applet: %w", err)
-	}
-
-	// Prepare config with device dimensions and request params
-	config := make(map[string]string)
-
-	// Add request params first, converting interface{} values to strings
-	for key, value := range request.Params {
-		switch v := value.(type) {
-		case string:
-			config[key] = v
-		case nil:
-			config[key] = ""
-		default:
-			// Convert other types (numbers, bools, etc.) to string using fmt
-			config[key] = fmt.Sprintf("%v", v)
-		}
-	}
-
-	// Set device dimensions, allowing them to override request params if specified
-	config["display_width"] = fmt.Sprintf("%d", request.Device.Width)
-	config["display_height"] = fmt.Sprintf("%d", request.Device.Height) // Run the applet with configuration
-	roots, err := applet.RunWithConfig(renderCtx, config)
-	if err != nil {
-		return nil, fmt.Errorf("error running applet: %w", err)
-	}
-
-	// Convert to screens and encode as WebP
-	screens := encode.ScreensFromRoots(roots)
-
-	// Use default filter (no magnification)
 	filter := func(input image.Image) (image.Image, error) {
 		return input, nil
 	}
 
-	// Set max duration for animations (15 seconds default)
 	maxDuration := 15000
 	if screens.ShowFullAnimation {
 		maxDuration = 0
 	}
 
-	// Encode as WebP
 	webpData, err := screens.EncodeWebP(maxDuration, filter)
 	if err != nil {
 		return nil, fmt.Errorf("error encoding WebP: %w", err)
 	}
 
-	// Encode to base64
 	base64Output := base64.StdEncoding.EncodeToString(webpData)
 
 	p.logger.Debug("Pixlet render completed",
@@ -241,6 +154,133 @@ func (p *Processor) RenderApp(ctx context.Context, request *models.RenderRequest
 		RenderOutput: base64Output,
 		ProcessedAt:  time.Now(),
 	}, nil
+}
+
+// RenderPreview renders an app configuration and returns raw image bytes in the requested format.
+func (p *Processor) RenderPreview(ctx context.Context, appID string, params map[string]interface{}, device models.Device, format string) ([]byte, error) {
+	screens, err := p.renderScreens(ctx, appID, params, device)
+	if err != nil {
+		return nil, err
+	}
+
+	filter := func(input image.Image) (image.Image, error) {
+		return input, nil
+	}
+
+	maxDuration := 15000
+	if screens.ShowFullAnimation {
+		maxDuration = 0
+	}
+
+	switch strings.ToLower(format) {
+	case "gif":
+		gifData, err := screens.EncodeGIF(maxDuration, filter)
+		if err != nil {
+			return nil, fmt.Errorf("error encoding GIF: %w", err)
+		}
+		p.logger.Debug("Pixlet preview rendered",
+			zap.String("app_id", appID),
+			zap.String("format", "gif"),
+			zap.Int("output_size", len(gifData)))
+		return gifData, nil
+	case "webp":
+		webpData, err := screens.EncodeWebP(maxDuration, filter)
+		if err != nil {
+			return nil, fmt.Errorf("error encoding WebP: %w", err)
+		}
+		p.logger.Debug("Pixlet preview rendered",
+			zap.String("app_id", appID),
+			zap.String("format", "webp"),
+			zap.Int("output_size", len(webpData)))
+		return webpData, nil
+	default:
+		return nil, fmt.Errorf("unsupported format: %s", format)
+	}
+}
+
+func (p *Processor) renderScreens(ctx context.Context, appID string, params map[string]interface{}, device models.Device) (*encode.Screens, error) {
+	if strings.Contains(appID, "..") || strings.Contains(appID, "/") {
+		return nil, fmt.Errorf("invalid app ID: %s", appID)
+	}
+
+	var requestCache runtime.Cache
+	if p.redisCache != nil {
+		requestCache = p.redisCache
+	} else {
+		requestCache = p.cache
+	}
+
+	runtime.InitHTTP(requestCache)
+	runtime.InitCache(requestCache)
+
+	app, exists := p.appRegistry.GetApp(appID)
+	if !exists {
+		return nil, fmt.Errorf("app not found: %s", appID)
+	}
+
+	appPath := app.StarFilePath
+
+	var appFS fs.FS
+	info, err := os.Stat(appPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat app path: %w", err)
+	}
+
+	if info.IsDir() {
+		appFS = os.DirFS(appPath)
+	} else {
+		if !strings.HasSuffix(appPath, ".star") {
+			return nil, fmt.Errorf("app file must have suffix .star: %s", appPath)
+		}
+		appFS = tools.NewSingleFileFS(appPath)
+	}
+
+	opts := []runtime.AppletOption{
+		runtime.WithPrintDisabled(),
+		runtime.WithSecretDecryptionKey(&p.secretDecryptionKey),
+	}
+
+	applet, err := runtime.NewAppletFromFS(appID, appFS, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load applet: %w", err)
+	}
+
+	config := make(map[string]string)
+	for key, value := range params {
+		switch v := value.(type) {
+		case string:
+			config[key] = v
+		case nil:
+			config[key] = ""
+		default:
+			config[key] = fmt.Sprintf("%v", v)
+		}
+	}
+
+	width := device.Width
+	if width <= 0 {
+		width = 64
+	}
+	height := device.Height
+	if height <= 0 {
+		height = 32
+	}
+
+	globals.Width = width
+	globals.Height = height
+
+	config["display_width"] = fmt.Sprintf("%d", width)
+	config["display_height"] = fmt.Sprintf("%d", height)
+
+	renderCtx, cancel := context.WithTimeout(ctx, p.timeout)
+	defer cancel()
+
+	roots, err := applet.RunWithConfig(renderCtx, config)
+	if err != nil {
+		return nil, fmt.Errorf("error running applet: %w", err)
+	}
+
+	return encode.ScreensFromRoots(roots), nil
 }
 
 // ListApps returns a list of available Pixlet apps from the registry
