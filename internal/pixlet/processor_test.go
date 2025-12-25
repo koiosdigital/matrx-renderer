@@ -2,6 +2,7 @@ package pixlet
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,6 +35,8 @@ def main():
 	if err != nil {
 		t.Fatalf("Failed to create app file: %v", err)
 	}
+
+	writeManifest(t, appDir, "test-app", "test-app.star")
 
 	// Create processor with temp directory
 	cfg := &config.PixletConfig{
@@ -140,6 +143,7 @@ func TestAppStructureValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create valid app file: %v", err)
 	}
+	writeManifest(t, validAppDir, "valid-app", "valid-app.star")
 
 	// Invalid app structure (missing .star file)
 	invalidAppDir := filepath.Join(tempDir, "invalid-app")
@@ -147,6 +151,7 @@ func TestAppStructureValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create invalid app directory: %v", err)
 	}
+	writeManifest(t, invalidAppDir, "invalid-app", "invalid-app.star")
 	// No .star file created
 
 	// Directory with wrong star file name
@@ -159,6 +164,7 @@ func TestAppStructureValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create wrong-name app file: %v", err)
 	}
+	writeManifest(t, wrongNameDir, "wrong-name", "wrong-name.star")
 
 	// Create a regular file (not directory) in the apps path
 	err = os.WriteFile(filepath.Join(tempDir, "regular-file.txt"), []byte("not an app"), 0644)
@@ -185,5 +191,20 @@ func TestAppStructureValidation(t *testing.T) {
 
 	if apps[0].ID != "valid-app" {
 		t.Errorf("Expected app ID 'valid-app', got '%s'", apps[0].ID)
+	}
+}
+
+func writeManifest(t *testing.T, dir, id, fileName string) {
+	t.Helper()
+	manifest := fmt.Sprintf(`id: %s
+name: %s
+summary: Test app
+desc: Test app description
+author: Test Suite
+fileName: %s
+packageName: apps.%s
+`, id, id, fileName, id)
+	if err := os.WriteFile(filepath.Join(dir, "manifest.yaml"), []byte(manifest), 0644); err != nil {
+		t.Fatalf("Failed to write manifest for %s: %v", id, err)
 	}
 }

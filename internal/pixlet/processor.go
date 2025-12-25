@@ -3,6 +3,7 @@ package pixlet
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"image"
 	"io/fs"
@@ -35,24 +36,37 @@ type Processor struct {
 	secretDecryptionKey runtime.SecretDecryptionKey // Key for decrypting secrets in Pixlet apps
 }
 
+// ErrSchemaNotDefined indicates that an app does not expose a Pixlet schema.
+var ErrSchemaNotDefined = errors.New("app does not define a schema")
+
 func GetSecretDecryptionKey(cfg *config.PixletConfig, logger *zap.Logger) (*runtime.SecretDecryptionKey, error) {
+	defaultKey := &runtime.SecretDecryptionKey{}
+	if cfg == nil {
+		return defaultKey, fmt.Errorf("pixlet config is required")
+	}
+
+	if strings.TrimSpace(cfg.KeyEncryptionKeyB64) == "" || strings.TrimSpace(cfg.SecretEncryptionKeyB64) == "" {
+		logger.Debug("Secret encryption keys not configured; using default decryptor")
+		return defaultKey, nil
+	}
+
 	client, err := fakekms.NewClient(cfg.KeyEncryptionKeyB64)
 	if err != nil {
-		logger.Fatal("Failed to create KMS client", zap.Error(err))
+		return defaultKey, fmt.Errorf("failed to create KMS client: %w", err)
 	}
 	kekAEAD, err := client.GetAEAD(cfg.KeyEncryptionKeyB64)
 	if err != nil {
-		logger.Fatal("Failed to GetAEAD", zap.Error(err))
+		return defaultKey, fmt.Errorf("failed to get AEAD: %w", err)
 	}
 
 	decodedKeyset, err := base64.StdEncoding.DecodeString(cfg.SecretEncryptionKeyB64)
 	if err != nil {
-		logger.Error("Failed to decode secret keyset", zap.Error(err))
+		return defaultKey, fmt.Errorf("failed to decode secret keyset: %w", err)
 	}
 
 	secretDecryptionKey := &runtime.SecretDecryptionKey{
 		EncryptedKeysetJSON: decodedKeyset,
-		KeyEncryptionKey:    kekAEAD, // Use NoOp AEAD for transparent key handling
+		KeyEncryptionKey:    kekAEAD,
 	}
 
 	return secretDecryptionKey, nil
@@ -373,7 +387,7 @@ func (p *Processor) GetAppSchema(ctx context.Context, appID string) (*schema.Sch
 
 	// Return the schema from the applet
 	if applet.Schema == nil {
-		return nil, fmt.Errorf("app does not define a schema")
+		return nil, ErrSchemaNotDefined
 	}
 
 	return applet.Schema, nil
@@ -424,7 +438,7 @@ func (p *Processor) CallSchemaHandler(ctx context.Context, appID, handlerName, p
 
 	// Check if the applet has a schema
 	if applet.Schema == nil {
-		return "", fmt.Errorf("app does not define a schema")
+		return "", ErrSchemaNotDefined
 	}
 
 	// Call the schema handler

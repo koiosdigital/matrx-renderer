@@ -23,21 +23,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "status": {
-                                            "type": "string",
-                                            "example": "healthy"
-                                        },
-                                        "service": {
-                                            "type": "string",
-                                            "example": "matrx-renderer"
-                                        },
-                                        "version": {
-                                            "type": "string",
-                                            "example": "1.0.0"
-                                        }
-                                    }
+                                    "$ref": "#/components/schemas/HealthResponse"
                                 }
                             }
                         }
@@ -58,37 +44,7 @@
                                 "schema": {
                                     "type": "array",
                                     "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "id": {
-                                                "type": "string",
-                                                "description": "Unique app identifier"
-                                            },
-                                            "name": {
-                                                "type": "string",
-                                                "description": "Display name of the app"
-                                            },
-                                            "summary": {
-                                                "type": "string",
-                                                "description": "Brief description of the app"
-                                            },
-                                            "author": {
-                                                "type": "string",
-                                                "description": "App author"
-                                            },
-                                            "desc": {
-                                                "type": "string",
-                                                "description": "Detailed description of the app"
-                                            },
-                                            "filename": {
-                                                "type": "string",
-                                                "description": "Source file name"
-                                            },
-                                            "package_name": {
-                                                "type": "string",
-                                                "description": "Internal package name"
-                                            }
-                                        }
+                                        "$ref": "#/components/schemas/AppManifest"
                                     }
                                 }
                             }
@@ -108,21 +64,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "status": {
-                                            "type": "string",
-                                            "example": "success"
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "App registry refreshed successfully"
-                                        },
-                                        "app_count": {
-                                            "type": "integer",
-                                            "example": 42
-                                        }
-                                    }
+                                    "$ref": "#/components/schemas/RefreshAppsResponse"
                                 }
                             }
                         }
@@ -134,51 +76,28 @@
             }
         },
         "/apps/{id}": {
+            "parameters": [
+                {
+                    "name": "id",
+                    "in": "path",
+                    "required": true,
+                    "description": "App identifier",
+                    "schema": {
+                        "type": "string"
+                    }
+                }
+            ],
             "get": {
                 "summary": "Get app details",
                 "description": "Returns detailed information about a specific app",
                 "operationId": "getApp",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "description": "App identifier",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
                 "responses": {
                     "200": {
                         "description": "App details",
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "id": {
-                                            "type": "string"
-                                        },
-                                        "name": {
-                                            "type": "string"
-                                        },
-                                        "summary": {
-                                            "type": "string"
-                                        },
-                                        "author": {
-                                            "type": "string"
-                                        },
-                                        "desc": {
-                                            "type": "string"
-                                        },
-                                        "filename": {
-                                            "type": "string"
-                                        },
-                                        "package_name": {
-                                            "type": "string"
-                                        }
-                                    }
+                                    "$ref": "#/components/schemas/AppManifest"
                                 }
                             }
                         }
@@ -190,29 +109,28 @@
             }
         },
         "/apps/{id}/schema": {
+            "parameters": [
+                {
+                    "name": "id",
+                    "in": "path",
+                    "required": true,
+                    "description": "App identifier",
+                    "schema": {
+                        "type": "string"
+                    }
+                }
+            ],
             "get": {
                 "summary": "Get app schema",
                 "description": "Returns the schema definition for a specific app",
                 "operationId": "getAppSchema",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "description": "App identifier",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
                 "responses": {
                     "200": {
                         "description": "App schema",
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object",
-                                    "description": "Schema structure varies by app"
+                                    "$ref": "#/components/schemas/AppSchema"
                                 }
                             }
                         }
@@ -227,26 +145,14 @@
             },
             "post": {
                 "summary": "Validate schema configuration",
-                "description": "Validates a configuration against the app's schema",
+                "description": "Validates a configuration object against the app's schema",
                 "operationId": "validateSchema",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "description": "App identifier",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
-                                "type": "object",
-                                "description": "Configuration object to validate against the schema"
+                                "$ref": "#/components/schemas/AppConfig"
                             }
                         }
                     }
@@ -257,49 +163,24 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "valid": {
-                                            "type": "boolean"
-                                        },
-                                        "errors": {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "field": {
-                                                        "type": "string"
-                                                    },
-                                                    "message": {
-                                                        "type": "string"
-                                                    },
-                                                    "code": {
-                                                        "type": "string"
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        "normalized_config": {
-                                            "type": "object",
-                                            "description": "Config with schema defaults applied"
-                                        }
-                                    }
+                                    "$ref": "#/components/schemas/ValidateSchemaResponse"
                                 }
                             }
                         }
+                    },
+                    "400": {
+                        "description": "Invalid JSON body"
+                    },
+                    "404": {
+                        "description": "App not found"
+                    },
+                    "500": {
+                        "description": "Failed to load schema"
                     }
-                },
-                "404": {
-                    "description": "App not found"
                 }
             }
-        }
-    },
-    "/apps/{id}/render": {
-        "post": {
-            "summary": "Render app",
-            "description": "Renders an app configuration and returns the base64-encoded WebP output.",
-            "operationId": "renderApp",
+        },
+        "/apps/{id}/render": {
             "parameters": [
                 {
                     "name": "id",
@@ -309,409 +190,1052 @@
                     "schema": {
                         "type": "string"
                     }
-                },
-                {
-                    "name": "width",
-                    "in": "query",
-                    "required": false,
-                    "description": "Device width in pixels (default 64)",
-                    "schema": {
-                        "type": "integer",
-                        "format": "int32"
-                    }
-                },
-                {
-                    "name": "height",
-                    "in": "query",
-                    "required": false,
-                    "description": "Device height in pixels (default 32)",
-                    "schema": {
-                        "type": "integer",
-                        "format": "int32"
-                    }
-                },
-                {
-                    "name": "device_id",
-                    "in": "query",
-                    "required": false,
-                    "description": "Optional device identifier used for logging",
-                    "schema": {
-                        "type": "string"
-                    }
                 }
             ],
-            "requestBody": {
-                "required": true,
-                "content": {
-                    "application/json": {
+            "post": {
+                "summary": "Render app",
+                "description": "Renders an app configuration and returns the base64-encoded WebP payload.",
+                "operationId": "renderApp",
+                "parameters": [
+                    {
+                        "name": "width",
+                        "in": "query",
+                        "required": false,
+                        "description": "Device width in pixels (default 64)",
                         "schema": {
-                            "type": "object",
-                            "description": "Configuration object matching the app schema"
+                            "type": "integer",
+                            "format": "int32"
                         }
-                    }
-                }
-            },
-            "responses": {
-                "200": {
-                    "description": "Render result",
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "result": {
-                                        "type": "object",
-                                        "properties": {
-                                            "type": {
-                                                "type": "string"
-                                            },
-                                            "uuid": {
-                                                "type": "string"
-                                            },
-                                            "device_id": {
-                                                "type": "string"
-                                            },
-                                            "app_id": {
-                                                "type": "string"
-                                            },
-                                            "render_output": {
-                                                "type": "string",
-                                                "description": "Base64 encoded WebP image"
-                                            },
-                                            "processed_at": {
-                                                "type": "string",
-                                                "format": "date-time"
-                                            }
-                                        }
-                                    },
-                                    "normalized_config": {
-                                        "type": "object",
-                                        "description": "Config with schema defaults applied"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "404": {
-                    "description": "App not found"
-                },
-                "422": {
-                    "description": "Validation failed",
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "valid": {
-                                        "type": "boolean"
-                                    },
-                                    "errors": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "field": {
-                                                    "type": "string"
-                                                },
-                                                "message": {
-                                                    "type": "string"
-                                                },
-                                                "code": {
-                                                    "type": "string"
-                                                }
-                                            }
-                                        }
-                                    },
-                                    "normalized_config": {
-                                        "type": "object"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    },
-    "/apps/{id}/preview.webp": {
-        "get": {
-            "summary": "Render WebP preview",
-            "description": "Renders an app using schema defaults (no request body) and returns binary WebP output.",
-            "operationId": "previewWebP",
-            "parameters": [
-                {
-                    "name": "id",
-                    "in": "path",
-                    "required": true,
-                    "description": "App identifier",
-                    "schema": {
-                        "type": "string"
-                    }
-                },
-                {
-                    "name": "width",
-                    "in": "query",
-                    "required": false,
-                    "description": "Device width in pixels (default 64)",
-                    "schema": {
-                        "type": "integer",
-                        "format": "int32"
-                    }
-                },
-                {
-                    "name": "height",
-                    "in": "query",
-                    "required": false,
-                    "description": "Device height in pixels (default 32)",
-                    "schema": {
-                        "type": "integer",
-                        "format": "int32"
-                    }
-                },
-                {
-                    "name": "device_id",
-                    "in": "query",
-                    "required": false,
-                    "description": "Optional device identifier used for logging",
-                    "schema": {
-                        "type": "string"
-                    }
-                }
-            ],
-            "responses": {
-                "200": {
-                    "description": "Binary WebP image",
-                    "content": {
-                        "image/webp": {
-                            "schema": {
-                                "type": "string",
-                                "format": "binary"
-                            }
-                        }
-                    }
-                },
-                "404": {
-                    "description": "App not found"
-                },
-                "422": {
-                    "description": "Validation failed",
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "valid": {
-                                        "type": "boolean"
-                                    },
-                                    "errors": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "field": {
-                                                    "type": "string"
-                                                },
-                                                "message": {
-                                                    "type": "string"
-                                                },
-                                                "code": {
-                                                    "type": "string"
-                                                }
-                                            }
-                                        }
-                                    },
-                                    "normalized_config": {
-                                        "type": "object"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    },
-    "/apps/{id}/preview.gif": {
-        "get": {
-            "summary": "Render GIF preview",
-            "description": "Renders an app using schema defaults (no request body) and returns binary GIF output.",
-            "operationId": "previewGif",
-            "parameters": [
-                {
-                    "name": "id",
-                    "in": "path",
-                    "required": true,
-                    "description": "App identifier",
-                    "schema": {
-                        "type": "string"
-                    }
-                },
-                {
-                    "name": "width",
-                    "in": "query",
-                    "required": false,
-                    "description": "Device width in pixels (default 64)",
-                    "schema": {
-                        "type": "integer",
-                        "format": "int32"
-                    }
-                },
-                {
-                    "name": "height",
-                    "in": "query",
-                    "required": false,
-                    "description": "Device height in pixels (default 32)",
-                    "schema": {
-                        "type": "integer",
-                        "format": "int32"
-                    }
-                },
-                {
-                    "name": "device_id",
-                    "in": "query",
-                    "required": false,
-                    "description": "Optional device identifier used for logging",
-                    "schema": {
-                        "type": "string"
-                    }
-                }
-            ],
-            "responses": {
-                "200": {
-                    "description": "Binary GIF image",
-                    "content": {
-                        "image/gif": {
-                            "schema": {
-                                "type": "string",
-                                "format": "binary"
-                            }
-                        }
-                    }
-                },
-                "404": {
-                    "description": "App not found"
-                },
-                "422": {
-                    "description": "Validation failed",
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "valid": {
-                                        "type": "boolean"
-                                    },
-                                    "errors": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "field": {
-                                                    "type": "string"
-                                                },
-                                                "message": {
-                                                    "type": "string"
-                                                },
-                                                "code": {
-                                                    "type": "string"
-                                                }
-                                            }
-                                        }
-                                    },
-                                    "normalized_config": {
-                                        "type": "object"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    },
-    "/apps/{id}/call_handler": {
-        "post": {
-            "summary": "Call schema handler",
-            "description": "Calls a schema handler for dynamic field options",
-            "operationId": "callSchemaHandler",
-            "parameters": [
-                {
-                    "name": "id",
-                    "in": "path",
-                    "required": true,
-                    "description": "App identifier",
-                    "schema": {
-                        "type": "string"
-                    }
-                }
-            ],
-            "requestBody": {
-                "required": true,
-                "content": {
-                    "application/json": {
+                    },
+                    {
+                        "name": "height",
+                        "in": "query",
+                        "required": false,
+                        "description": "Device height in pixels (default 32)",
                         "schema": {
-                            "type": "object",
-                            "properties": {
-                                "handler": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "device_id",
+                        "in": "query",
+                        "required": false,
+                        "description": "Optional device identifier used for logging",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AppConfig"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Render result",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RenderResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request"
+                    },
+                    "404": {
+                        "description": "App not found"
+                    },
+                    "422": {
+                        "description": "Validation failed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValidateSchemaResponse"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to render app"
+                    }
+                }
+            }
+        },
+        "/apps/{id}/preview.webp": {
+            "parameters": [
+                {
+                    "name": "id",
+                    "in": "path",
+                    "required": true,
+                    "description": "App identifier",
+                    "schema": {
+                        "type": "string"
+                    }
+                }
+            ],
+            "get": {
+                "summary": "Render WebP preview",
+                "description": "Renders an app using schema defaults (no request body) and returns binary WebP output.",
+                "operationId": "previewWebP",
+                "parameters": [
+                    {
+                        "name": "width",
+                        "in": "query",
+                        "required": false,
+                        "description": "Device width in pixels (default 64)",
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "height",
+                        "in": "query",
+                        "required": false,
+                        "description": "Device height in pixels (default 32)",
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "device_id",
+                        "in": "query",
+                        "required": false,
+                        "description": "Optional device identifier used for logging",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Binary WebP image",
+                        "content": {
+                            "image/webp": {
+                                "schema": {
                                     "type": "string",
-                                    "description": "Handler name to call"
-                                },
-                                "config": {
-                                    "type": "object",
-                                    "description": "Current configuration values"
+                                    "format": "binary"
                                 }
                             }
                         }
+                    },
+                    "400": {
+                        "description": "Invalid request"
+                    },
+                    "404": {
+                        "description": "App not found"
+                    },
+                    "500": {
+                        "description": "Failed to render preview"
                     }
                 }
-            },
-            "responses": {
-                "200": {
-                    "description": "Handler result",
+            }
+        },
+        "/apps/{id}/preview.gif": {
+            "parameters": [
+                {
+                    "name": "id",
+                    "in": "path",
+                    "required": true,
+                    "description": "App identifier",
+                    "schema": {
+                        "type": "string"
+                    }
+                }
+            ],
+            "get": {
+                "summary": "Render GIF preview",
+                "description": "Renders an app using schema defaults (no request body) and returns binary GIF output.",
+                "operationId": "previewGif",
+                "parameters": [
+                    {
+                        "name": "width",
+                        "in": "query",
+                        "required": false,
+                        "description": "Device width in pixels (default 64)",
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "height",
+                        "in": "query",
+                        "required": false,
+                        "description": "Device height in pixels (default 32)",
+                        "schema": {
+                            "type": "integer",
+                            "format": "int32"
+                        }
+                    },
+                    {
+                        "name": "device_id",
+                        "in": "query",
+                        "required": false,
+                        "description": "Optional device identifier used for logging",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Binary GIF image",
+                        "content": {
+                            "image/gif": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request"
+                    },
+                    "404": {
+                        "description": "App not found"
+                    },
+                    "500": {
+                        "description": "Failed to render preview"
+                    }
+                }
+            }
+        },
+        "/apps/{id}/call_handler": {
+            "parameters": [
+                {
+                    "name": "id",
+                    "in": "path",
+                    "required": true,
+                    "description": "App identifier",
+                    "schema": {
+                        "type": "string"
+                    }
+                }
+            ],
+            "post": {
+                "summary": "Call schema handler",
+                "description": "Calls a schema handler for dynamic field resolution",
+                "operationId": "callSchemaHandler",
+                "requestBody": {
+                    "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "options": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "object"
-                                        }
-                                    }
-                                }
+                                "$ref": "#/components/schemas/CallSchemaHandlerRequest"
                             }
                         }
                     }
                 },
-                "400": {
-                    "description": "Invalid request"
-                },
-                "404": {
-                    "description": "App or handler not found"
+                "responses": {
+                    "200": {
+                        "description": "Handler result",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CallSchemaHandlerResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request"
+                    },
+                    "404": {
+                        "description": "App or handler not found"
+                    },
+                    "500": {
+                        "description": "Failed to invoke schema handler"
+                    }
+                }
+            }
+        },
+        "/swagger.json": {
+            "get": {
+                "summary": "OpenAPI specification",
+                "description": "Returns the OpenAPI/Swagger specification for this API",
+                "operationId": "getSwagger",
+                "responses": {
+                    "200": {
+                        "description": "OpenAPI specification",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     },
-    "/swagger.json": {
-        "get": {
-            "summary": "OpenAPI specification",
-            "description": "Returns the OpenAPI/Swagger specification for this API",
-            "operationId": "getSwagger",
-            "responses": {
-                "200": {
-                    "description": "OpenAPI specification",
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object"
-                            }
+    "components": {
+        "schemas": {
+            "HealthResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "example": "healthy"
+                    },
+                    "service": {
+                        "type": "string",
+                        "example": "matrx-renderer"
+                    },
+                    "version": {
+                        "type": "string",
+                        "example": "1.0.0"
+                    }
+                },
+                "required": [
+                    "status",
+                    "service",
+                    "version"
+                ]
+            },
+            "AppManifest": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "Unique app identifier"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Display name"
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "Short summary"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Detailed description"
+                    },
+                    "author": {
+                        "type": "string",
+                        "description": "App author"
+                    },
+                    "fileName": {
+                        "type": "string",
+                        "description": "Primary .star file"
+                    },
+                    "packageName": {
+                        "type": "string",
+                        "description": "Package name used internally"
+                    },
+                    "directoryPath": {
+                        "type": "string",
+                        "description": "Absolute path to the app directory"
+                    },
+                    "starFilePath": {
+                        "type": "string",
+                        "description": "Absolute path to the entry .star file"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "summary",
+                    "description",
+                    "author",
+                    "fileName",
+                    "packageName"
+                ]
+            },
+            "AppSchema": {
+                "type": "object",
+                "properties": {
+                    "version": {
+                        "type": "string",
+                        "description": "Schema version"
+                    },
+                    "schema": {
+                        "type": "array",
+                        "description": "Configurable fields",
+                        "items": {
+                            "$ref": "#/components/schemas/AppSchemaField"
+                        }
+                    },
+                    "notifications": {
+                        "type": "array",
+                        "description": "Supported notifications",
+                        "items": {
+                            "$ref": "#/components/schemas/AppSchemaNotificationField"
                         }
                     }
+                },
+                "required": [
+                    "version",
+                    "schema"
+                ]
+            },
+            "AppSchemaField": {
+                "description": "Discriminated schema field definition",
+                "oneOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaColorField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaDatetimeField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaDropdownField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaGeneratedField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaLocationField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaLocationBasedField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaOnOffField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaRadioField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaTextField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaTypeaheadField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaOAuth2Field"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaOAuth1Field"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaPNGField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaNotificationField"
+                    }
+                ],
+                "discriminator": {
+                    "propertyName": "type",
+                    "mapping": {
+                        "color": "#/components/schemas/AppSchemaColorField",
+                        "datetime": "#/components/schemas/AppSchemaDatetimeField",
+                        "dropdown": "#/components/schemas/AppSchemaDropdownField",
+                        "generated": "#/components/schemas/AppSchemaGeneratedField",
+                        "location": "#/components/schemas/AppSchemaLocationField",
+                        "locationbased": "#/components/schemas/AppSchemaLocationBasedField",
+                        "onoff": "#/components/schemas/AppSchemaOnOffField",
+                        "radio": "#/components/schemas/AppSchemaRadioField",
+                        "text": "#/components/schemas/AppSchemaTextField",
+                        "typeahead": "#/components/schemas/AppSchemaTypeaheadField",
+                        "oauth2": "#/components/schemas/AppSchemaOAuth2Field",
+                        "oauth1": "#/components/schemas/AppSchemaOAuth1Field",
+                        "png": "#/components/schemas/AppSchemaPNGField",
+                        "notification": "#/components/schemas/AppSchemaNotificationField"
+                    }
                 }
+            },
+            "AppSchemaOption": {
+                "type": "object",
+                "properties": {
+                    "display": {
+                        "type": "string"
+                    },
+                    "text": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "text",
+                    "value"
+                ]
+            },
+            "AppSchemaSound": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "path": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "title",
+                    "path"
+                ]
+            },
+            "AppSchemaVisibility": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "invisible",
+                            "disabled"
+                        ]
+                    },
+                    "condition": {
+                        "type": "string",
+                        "enum": [
+                            "equal",
+                            "not_equal"
+                        ]
+                    },
+                    "variable": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "type",
+                    "condition",
+                    "variable"
+                ]
+            },
+            "AppConfig": {
+                "type": "object",
+                "description": "Arbitrary configuration object keyed by schema field IDs",
+                "additionalProperties": true
+            },
+            "ValidationError": {
+                "type": "object",
+                "properties": {
+                    "field": {
+                        "type": "string",
+                        "description": "Field identifier"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "Human readable error"
+                    },
+                    "code": {
+                        "type": "string",
+                        "description": "Machine readable error code"
+                    }
+                },
+                "required": [
+                    "field",
+                    "message",
+                    "code"
+                ]
+            },
+            "ValidateSchemaResponse": {
+                "type": "object",
+                "properties": {
+                    "valid": {
+                        "type": "boolean"
+                    },
+                    "errors": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        }
+                    },
+                    "normalized_config": {
+                        "$ref": "#/components/schemas/AppConfig"
+                    }
+                },
+                "required": [
+                    "valid",
+                    "normalized_config"
+                ]
+            },
+            "RenderResult": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string"
+                    },
+                    "uuid": {
+                        "type": "string"
+                    },
+                    "device_id": {
+                        "type": "string"
+                    },
+                    "app_id": {
+                        "type": "string"
+                    },
+                    "render_output": {
+                        "type": "string",
+                        "description": "Base64 encoded WebP payload"
+                    },
+                    "processed_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "required": [
+                    "type",
+                    "uuid",
+                    "app_id",
+                    "render_output",
+                    "processed_at"
+                ]
+            },
+            "RenderResponse": {
+                "type": "object",
+                "properties": {
+                    "result": {
+                        "$ref": "#/components/schemas/RenderResult"
+                    },
+                    "normalized_config": {
+                        "$ref": "#/components/schemas/AppConfig"
+                    }
+                },
+                "required": [
+                    "result",
+                    "normalized_config"
+                ]
+            },
+            "CallSchemaHandlerRequest": {
+                "type": "object",
+                "properties": {
+                    "handler_name": {
+                        "type": "string",
+                        "description": "Handler to invoke"
+                    },
+                    "data": {
+                        "type": "string",
+                        "description": "Serialized payload passed to the handler"
+                    }
+                },
+                "required": [
+                    "handler_name"
+                ]
+            },
+            "CallSchemaHandlerResponse": {
+                "type": "object",
+                "properties": {
+                    "result": {
+                        "type": "string",
+                        "description": "Raw handler response"
+                    }
+                },
+                "required": [
+                    "result"
+                ]
+            },
+            "RefreshAppsResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "example": "success"
+                    },
+                    "message": {
+                        "type": "string",
+                        "example": "App registry refreshed successfully"
+                    },
+                    "app_count": {
+                        "type": "integer",
+                        "example": 42
+                    }
+                },
+                "required": [
+                    "status",
+                    "message",
+                    "app_count"
+                ]
+            },
+            "AppSchemaFieldCommon": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "Field identifier"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Human readable label"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Helper text"
+                    },
+                    "icon": {
+                        "type": "string",
+                        "description": "Optional icon"
+                    },
+                    "visibility": {
+                        "$ref": "#/components/schemas/AppSchemaVisibility"
+                    },
+                    "default": {
+                        "type": "string",
+                        "description": "Default value serialized as text"
+                    },
+                    "options": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AppSchemaOption"
+                        }
+                    },
+                    "palette": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "sounds": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AppSchemaSound"
+                        }
+                    },
+                    "source": {
+                        "type": "string",
+                        "description": "Field ID used as source for generated fields"
+                    },
+                    "handler": {
+                        "type": "string",
+                        "description": "Pixlet handler invoked for dynamic data"
+                    },
+                    "client_id": {
+                        "type": "string",
+                        "description": "OAuth client identifier"
+                    },
+                    "authorization_endpoint": {
+                        "type": "string",
+                        "description": "OAuth authorization endpoint"
+                    },
+                    "scopes": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            },
+            "AppSchemaColorField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "color"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaDatetimeField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "datetime"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaDropdownField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "dropdown"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type",
+                            "options"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaGeneratedField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "generated"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type",
+                            "source",
+                            "handler"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaLocationField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "location"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaLocationBasedField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "locationbased"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type",
+                            "handler"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaOnOffField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "onoff"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaRadioField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "radio"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type",
+                            "options"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaTextField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "text"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaTypeaheadField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "typeahead"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type",
+                            "handler"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaOAuth2Field": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "oauth2"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type",
+                            "handler",
+                            "client_id",
+                            "authorization_endpoint",
+                            "scopes"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaOAuth1Field": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "oauth1"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaPNGField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "png"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaNotificationField": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "notification"
+                                ]
+                            }
+                        },
+                        "required": [
+                            "type",
+                            "sounds"
+                        ]
+                    }
+                ]
             }
         }
     }
-}
 }

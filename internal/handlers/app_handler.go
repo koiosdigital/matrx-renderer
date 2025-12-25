@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -209,8 +210,8 @@ func (h *AppHandler) handleAppSchema(w http.ResponseWriter, r *http.Request, app
 			http.Error(w, "App not found", http.StatusNotFound)
 			return
 		}
-		if strings.Contains(err.Error(), "does not define a schema") {
-			http.Error(w, "App does not define a schema", http.StatusNotFound)
+		if errors.Is(err, pixlet.ErrSchemaNotDefined) {
+			h.writeJSON(w, http.StatusOK, map[string]interface{}{})
 			return
 		}
 
@@ -273,7 +274,7 @@ func (h *AppHandler) handleCallSchemaHandler(w http.ResponseWriter, r *http.Requ
 			http.Error(w, "App not found", http.StatusNotFound)
 			return
 		}
-		if strings.Contains(err.Error(), "does not define a schema") {
+		if errors.Is(err, pixlet.ErrSchemaNotDefined) {
 			http.Error(w, "App does not define a schema", http.StatusNotFound)
 			return
 		}
@@ -331,6 +332,7 @@ func (h *AppHandler) handleValidateSchema(w http.ResponseWriter, r *http.Request
 	}
 
 	appSchema, err := h.processor.GetAppSchema(r.Context(), appID)
+	schemaAvailable := true
 	if err != nil {
 		h.logger.Error("Failed to get app schema for validation",
 			zap.String("app_id", appID),
@@ -339,21 +341,29 @@ func (h *AppHandler) handleValidateSchema(w http.ResponseWriter, r *http.Request
 			http.Error(w, "App not found", http.StatusNotFound)
 			return
 		}
-		if strings.Contains(err.Error(), "does not define a schema") {
-			http.Error(w, "App does not define a schema", http.StatusNotFound)
+		if errors.Is(err, pixlet.ErrSchemaNotDefined) {
+			schemaAvailable = false
+		} else {
+			http.Error(w, "Failed to get app schema", http.StatusInternalServerError)
 			return
 		}
-		http.Error(w, "Failed to get app schema", http.StatusInternalServerError)
-		return
 	}
 
-	normalizedConfig, validationErrors, err := h.validator.ValidateConfig(r.Context(), appID, config, appSchema)
-	if err != nil {
-		h.logger.Error("Failed to validate schema",
-			zap.String("app_id", appID),
-			zap.Error(err))
-		http.Error(w, "Failed to validate config", http.StatusInternalServerError)
-		return
+	var (
+		normalizedConfig map[string]interface{}
+		validationErrors []ValidationError
+	)
+	if schemaAvailable {
+		normalizedConfig, validationErrors, err = h.validator.ValidateConfig(r.Context(), appID, config, appSchema)
+		if err != nil {
+			h.logger.Error("Failed to validate schema",
+				zap.String("app_id", appID),
+				zap.Error(err))
+			http.Error(w, "Failed to validate config", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		normalizedConfig = copyConfig(config)
 	}
 
 	response := ValidateSchemaResponse{
@@ -387,6 +397,7 @@ func (h *AppHandler) handleAppRender(w http.ResponseWriter, r *http.Request, app
 	}
 
 	appSchema, err := h.processor.GetAppSchema(r.Context(), appID)
+	schemaAvailable := true
 	if err != nil {
 		h.logger.Error("Failed to get app schema for render",
 			zap.String("app_id", appID),
@@ -395,25 +406,33 @@ func (h *AppHandler) handleAppRender(w http.ResponseWriter, r *http.Request, app
 			http.Error(w, "App not found", http.StatusNotFound)
 			return
 		}
-		if strings.Contains(err.Error(), "does not define a schema") {
-			http.Error(w, "App does not define a schema", http.StatusNotFound)
+		if errors.Is(err, pixlet.ErrSchemaNotDefined) {
+			schemaAvailable = false
+		} else {
+			http.Error(w, "Failed to get app schema", http.StatusInternalServerError)
 			return
 		}
-		http.Error(w, "Failed to get app schema", http.StatusInternalServerError)
-		return
 	}
 
-	normalizedConfig, validationErrors, err := h.validator.ValidateConfig(r.Context(), appID, config, appSchema)
-	if err != nil {
-		h.logger.Error("Failed to validate render config",
-			zap.String("app_id", appID),
-			zap.Error(err))
-		http.Error(w, "Failed to validate config", http.StatusInternalServerError)
-		return
-	}
-	if len(validationErrors) > 0 {
-		h.respondValidationFailure(w, normalizedConfig, validationErrors)
-		return
+	var (
+		normalizedConfig map[string]interface{}
+		validationErrors []ValidationError
+	)
+	if schemaAvailable {
+		normalizedConfig, validationErrors, err = h.validator.ValidateConfig(r.Context(), appID, config, appSchema)
+		if err != nil {
+			h.logger.Error("Failed to validate render config",
+				zap.String("app_id", appID),
+				zap.Error(err))
+			http.Error(w, "Failed to validate config", http.StatusInternalServerError)
+			return
+		}
+		if len(validationErrors) > 0 {
+			h.respondValidationFailure(w, normalizedConfig, validationErrors)
+			return
+		}
+	} else {
+		normalizedConfig = copyConfig(config)
 	}
 
 	device, err := h.parseDevice(r)
@@ -471,6 +490,7 @@ func (h *AppHandler) handleAppPreview(w http.ResponseWriter, r *http.Request, ap
 	}
 
 	appSchema, err := h.processor.GetAppSchema(r.Context(), appID)
+	schemaAvailable := true
 	if err != nil {
 		h.logger.Error("Failed to get app schema for preview",
 			zap.String("app_id", appID),
@@ -479,21 +499,26 @@ func (h *AppHandler) handleAppPreview(w http.ResponseWriter, r *http.Request, ap
 			http.Error(w, "App not found", http.StatusNotFound)
 			return
 		}
-		if strings.Contains(err.Error(), "does not define a schema") {
-			http.Error(w, "App does not define a schema", http.StatusNotFound)
+		if errors.Is(err, pixlet.ErrSchemaNotDefined) {
+			schemaAvailable = false
+		} else {
+			http.Error(w, "Failed to get app schema", http.StatusInternalServerError)
 			return
 		}
-		http.Error(w, "Failed to get app schema", http.StatusInternalServerError)
-		return
 	}
 
-	normalizedConfig, _, err := h.validator.ValidateConfig(r.Context(), appID, nil, appSchema)
-	if err != nil {
-		h.logger.Error("Failed to validate preview config",
-			zap.String("app_id", appID),
-			zap.Error(err))
-		http.Error(w, "Failed to validate config", http.StatusInternalServerError)
-		return
+	var normalizedConfig map[string]interface{}
+	if schemaAvailable {
+		normalizedConfig, _, err = h.validator.ValidateConfig(r.Context(), appID, nil, appSchema)
+		if err != nil {
+			h.logger.Error("Failed to validate preview config",
+				zap.String("app_id", appID),
+				zap.Error(err))
+			http.Error(w, "Failed to validate config", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		normalizedConfig = map[string]interface{}{}
 	}
 
 	device, err := h.parseDevice(r)
@@ -543,6 +568,17 @@ func (h *AppHandler) respondValidationFailure(w http.ResponseWriter, normalizedC
 		NormalizedConfig: normalizedConfig,
 	}
 	h.writeJSON(w, http.StatusUnprocessableEntity, response)
+}
+
+func copyConfig(config map[string]interface{}) map[string]interface{} {
+	if config == nil {
+		return map[string]interface{}{}
+	}
+	result := make(map[string]interface{}, len(config))
+	for key, value := range config {
+		result[key] = value
+	}
+	return result
 }
 
 func addDisplayDimensions(config map[string]interface{}, device models.Device) map[string]interface{} {
