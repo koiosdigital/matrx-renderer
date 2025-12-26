@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/koios/matrx-renderer/internal/handlers"
@@ -14,23 +15,29 @@ import (
 
 // Consumer handles Redis pub/sub message consumption for render requests
 type Consumer struct {
-	client  *Client
-	handler *handlers.EventHandler
-	logger  *zap.Logger
-	ctx     context.Context
-	cancel  context.CancelFunc
+	client     *Client
+	handler    *handlers.EventHandler
+	logger     *zap.Logger
+	ctx        context.Context
+	cancel     context.CancelFunc
+	maxWorkers int // Maximum concurrent message handlers
 }
 
 // NewConsumer creates a new Redis consumer
-func NewConsumer(client *Client, handler *handlers.EventHandler, logger *zap.Logger) *Consumer {
+func NewConsumer(client *Client, handler *handlers.EventHandler, logger *zap.Logger, maxWorkers int) *Consumer {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	if maxWorkers <= 0 {
+		maxWorkers = 8 // default to 8 concurrent message handlers
+	}
+
 	return &Consumer{
-		client:  client,
-		handler: handler,
-		logger:  logger,
-		ctx:     ctx,
-		cancel:  cancel,
+		client:     client,
+		handler:    handler,
+		logger:     logger,
+		ctx:        ctx,
+		cancel:     cancel,
+		maxWorkers: maxWorkers,
 	}
 }
 
@@ -63,18 +70,26 @@ func (c *Consumer) Stop() {
 
 // consumeMessages handles the actual message consumption from Redis Streams
 func (c *Consumer) consumeMessages() error {
-	c.logger.Info("Started consuming Redis stream messages")
+	c.logger.Info("Started consuming Redis stream messages",
+		zap.Int("max_workers", c.maxWorkers))
+
+	// Semaphore to limit concurrent message processing
+	sem := make(chan struct{}, c.maxWorkers)
+	var wg sync.WaitGroup
 
 	for {
 		select {
 		case <-c.ctx.Done():
+			// Wait for all in-flight messages to complete
+			wg.Wait()
 			return nil
 		default:
 			// Read messages from stream with blocking timeout
-			streams, err := c.client.ReadFromStream(c.ctx, 10, 5*time.Second)
+			streams, err := c.client.ReadFromStream(c.ctx, int64(c.maxWorkers), 5*time.Second)
 			if err != nil {
 				// Check if connection is healthy
 				if !c.client.IsHealthy() {
+					wg.Wait() // Wait for in-flight messages before returning
 					return fmt.Errorf("Redis connection unhealthy, will reconnect")
 				}
 				c.logger.Error("Error reading from stream", zap.Error(err))
@@ -82,10 +97,20 @@ func (c *Consumer) consumeMessages() error {
 				continue
 			}
 
-			// Process messages from the stream
+			// Process messages from the stream concurrently
 			for _, stream := range streams {
 				for _, message := range stream.Messages {
-					c.handleStreamMessage(message)
+					// Acquire semaphore slot
+					sem <- struct{}{}
+					wg.Add(1)
+
+					go func(msg redis.XMessage) {
+						defer func() {
+							<-sem // Release semaphore slot
+							wg.Done()
+						}()
+						c.handleStreamMessage(msg)
+					}(message)
 				}
 			}
 		}

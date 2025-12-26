@@ -44,8 +44,8 @@ func main() {
 	// Initialize event handler
 	eventHandler := handlers.NewEventHandler(logger, cfg)
 
-	// Initialize Redis consumer
-	consumer := redis.NewConsumer(redisClient, eventHandler, logger)
+	// Initialize Redis consumer with concurrent message handling
+	consumer := redis.NewConsumer(redisClient, eventHandler, logger, cfg.Pixlet.RenderWorkers)
 
 	// Create HTTP server for app management API
 	mux := http.NewServeMux()
@@ -101,6 +101,9 @@ func main() {
 
 	// Stop Redis consumer
 	consumer.Stop()
+
+	// Stop the processor's worker pool
+	eventHandler.GetProcessor().Stop()
 
 	// Cancel the main context to stop all operations
 	cancel()

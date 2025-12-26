@@ -27,6 +27,8 @@ type PixletConfig struct {
 	AppsPath               string
 	SecretEncryptionKeyB64 string // Base64 encoded secret keyset for Pixlet
 	KeyEncryptionKeyB64    string // Base64 encoded key encryption key for Pixlet
+	RenderWorkers          int    // Number of concurrent render workers (default: 4)
+	RenderTimeout          int    // Render timeout in seconds (default: 30)
 }
 
 // RedisConfig holds Redis-related configuration
@@ -53,6 +55,8 @@ func Load() (*Config, error) {
 			AppsPath:               getEnv("PIXLET_APPS_PATH", "/opt/apps"),
 			SecretEncryptionKeyB64: getEnv("PIXLET_SECRET_KEYSET_B64", ""),
 			KeyEncryptionKeyB64:    getEnv("PIXLET_KEY_ENCRYPTION_KEY_B64", ""),
+			RenderWorkers:          getEnvAsInt("PIXLET_RENDER_WORKERS", 4),
+			RenderTimeout:          getEnvAsInt("PIXLET_RENDER_TIMEOUT", 30),
 		},
 		Redis: RedisConfig{
 			Addr:          getRedisAddr(),

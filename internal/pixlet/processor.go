@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/koios/matrx-renderer/internal/config"
@@ -17,12 +18,17 @@ import (
 
 	"tidbyt.dev/pixlet/encode"
 	"tidbyt.dev/pixlet/globals"
+	"tidbyt.dev/pixlet/render"
 	"tidbyt.dev/pixlet/runtime"
 	"tidbyt.dev/pixlet/schema"
 	"tidbyt.dev/pixlet/tools"
 
 	"github.com/google/tink/go/testing/fakekms"
 )
+
+// renderMu protects concurrent access to pixlet's global dimension variables
+// (globals.Width, globals.Height, render.FrameWidth, render.FrameHeight)
+var renderMu sync.Mutex
 
 // Processor handles Pixlet app processing with a persistent runtime
 type Processor struct {
@@ -34,6 +40,7 @@ type Processor struct {
 	timeout             time.Duration
 	appRegistry         *models.AppRegistry         // App registry for manifest-based loading
 	secretDecryptionKey runtime.SecretDecryptionKey // Key for decrypting secrets in Pixlet apps
+	workerPool          *WorkerPool                 // Worker pool for concurrent rendering
 }
 
 // ErrSchemaNotDefined indicates that an app does not expose a Pixlet schema.
@@ -89,13 +96,31 @@ func NewProcessor(cfg *config.PixletConfig, logger *zap.Logger) *Processor {
 		logger.Error("Failed to get secret decryption key", zap.Error(err))
 	}
 
+	timeout := cfg.RenderTimeout
+	if timeout <= 0 {
+		timeout = 30
+	}
+
+	// Create worker pool for concurrent rendering
+	workerPool := NewWorkerPool(
+		cfg.RenderWorkers,
+		logger,
+		appRegistry,
+		cache,
+		nil, // no Redis cache
+		*secretDecryptionKey,
+		timeout,
+	)
+	workerPool.Start()
+
 	return &Processor{
 		config:              cfg,
 		logger:              logger,
 		cache:               cache,
-		timeout:             30 * time.Second, // Default timeout
+		timeout:             time.Duration(timeout) * time.Second,
 		appRegistry:         appRegistry,
 		secretDecryptionKey: *secretDecryptionKey,
+		workerPool:          workerPool,
 	}
 }
 
@@ -120,15 +145,33 @@ func NewProcessorWithRedis(cfg *config.PixletConfig, redisConfig *config.RedisCo
 		logger.Error("Failed to get secret decryption key", zap.Error(err))
 	}
 
+	timeout := cfg.RenderTimeout
+	if timeout <= 0 {
+		timeout = 30
+	}
+
+	// Create worker pool for concurrent rendering
+	workerPool := NewWorkerPool(
+		cfg.RenderWorkers,
+		logger,
+		appRegistry,
+		cache,
+		redisCache,
+		*secretDecryptionKey,
+		timeout,
+	)
+	workerPool.Start()
+
 	return &Processor{
 		config:              cfg,
 		redisConfig:         redisConfig,
 		logger:              logger,
 		cache:               cache,
 		redisCache:          redisCache,
-		timeout:             30 * time.Second, // Default timeout
+		timeout:             time.Duration(timeout) * time.Second,
 		appRegistry:         appRegistry,
 		secretDecryptionKey: *secretDecryptionKey,
+		workerPool:          workerPool,
 	}
 }
 
@@ -213,6 +256,12 @@ func (p *Processor) RenderPreview(ctx context.Context, appID string, params map[
 }
 
 func (p *Processor) renderScreens(ctx context.Context, appID string, params map[string]interface{}, device models.Device) (*encode.Screens, error) {
+	// Delegate rendering to the worker pool for concurrent processing
+	return p.workerPool.Submit(ctx, appID, params, device)
+}
+
+// renderScreensDirect performs rendering directly without the worker pool (used for schema operations)
+func (p *Processor) renderScreensDirect(ctx context.Context, appID string, params map[string]interface{}, device models.Device) (*encode.Screens, error) {
 	if strings.Contains(appID, "..") || strings.Contains(appID, "/") {
 		return nil, fmt.Errorf("invalid app ID: %s", appID)
 	}
@@ -280,21 +329,33 @@ func (p *Processor) renderScreens(ctx context.Context, appID string, params map[
 		height = 32
 	}
 
-	globals.Width = width
-	globals.Height = height
-
 	config["display_width"] = fmt.Sprintf("%d", width)
 	config["display_height"] = fmt.Sprintf("%d", height)
 
 	renderCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
+	// Lock mutex to protect global dimension variables during render.
+	// The globals and render package variables are not thread-safe.
+	renderMu.Lock()
+	globals.Width = width
+	globals.Height = height
+	// Also set render.FrameWidth/FrameHeight directly because pixlet's Paint()
+	// only updates them when globals differ from defaults (64x32). This causes
+	// stale dimensions when switching from non-default to default sizes.
+	render.FrameWidth = width
+	render.FrameHeight = height
+
 	roots, err := applet.RunWithConfig(renderCtx, config)
 	if err != nil {
+		renderMu.Unlock()
 		return nil, fmt.Errorf("error running applet: %w", err)
 	}
 
-	return encode.ScreensFromRoots(roots), nil
+	screens := encode.ScreensFromRoots(roots)
+	renderMu.Unlock()
+
+	return screens, nil
 }
 
 // ListApps returns a list of available Pixlet apps from the registry
@@ -335,11 +396,23 @@ func (p *Processor) RefreshAppRegistry() error {
 	// Replace the current registry
 	p.appRegistry = newRegistry
 
+	// Update the worker pool's registry as well
+	if p.workerPool != nil {
+		p.workerPool.UpdateAppRegistry(newRegistry)
+	}
+
 	apps := newRegistry.GetAppsList()
 	p.logger.Info("App registry refreshed successfully",
 		zap.Int("app_count", len(apps)))
 
 	return nil
+}
+
+// Stop gracefully shuts down the processor and its worker pool
+func (p *Processor) Stop() {
+	if p.workerPool != nil {
+		p.workerPool.Stop()
+	}
 }
 
 // GetAppSchema returns the schema for a specific app
@@ -385,9 +458,9 @@ func (p *Processor) GetAppSchema(ctx context.Context, appID string) (*schema.Sch
 		return nil, fmt.Errorf("failed to load applet: %w", err)
 	}
 
-	// Return the schema from the applet
+	// Return the schema from the applet (empty schema is valid)
 	if applet.Schema == nil {
-		return nil, ErrSchemaNotDefined
+		return &schema.Schema{}, nil
 	}
 
 	return applet.Schema, nil
