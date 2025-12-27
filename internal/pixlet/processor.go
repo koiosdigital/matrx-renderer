@@ -179,7 +179,33 @@ func NewProcessorWithRedis(cfg *config.PixletConfig, redisConfig *config.RedisCo
 func (p *Processor) RenderApp(ctx context.Context, request *models.RenderRequest) (*models.RenderResult, error) {
 	screens, err := p.renderScreens(ctx, request.AppID, request.Params, request.Device)
 	if err != nil {
-		return nil, err
+		// Render failed (e.g., fail() called in starlark) - return empty result with error flag
+		return &models.RenderResult{
+			Type:         "render_result",
+			UUID:         request.UUID,
+			DeviceID:     request.Device.ID,
+			AppID:        request.AppID,
+			RenderOutput: "",
+			Error:        true,
+			ProcessedAt:  time.Now(),
+		}, err
+	}
+
+	// Check if app returned empty screens (e.g., return [] in starlark)
+	if screens.Empty() {
+		p.logger.Debug("Pixlet render returned empty screens (skipped)",
+			zap.String("app_id", request.AppID),
+			zap.String("device_id", request.Device.ID))
+
+		return &models.RenderResult{
+			Type:         "render_result",
+			UUID:         request.UUID,
+			DeviceID:     request.Device.ID,
+			AppID:        request.AppID,
+			RenderOutput: "",
+			Error:        false,
+			ProcessedAt:  time.Now(),
+		}, nil
 	}
 
 	filter := func(input image.Image) (image.Image, error) {
@@ -193,7 +219,16 @@ func (p *Processor) RenderApp(ctx context.Context, request *models.RenderRequest
 
 	webpData, err := screens.EncodeWebP(maxDuration, filter)
 	if err != nil {
-		return nil, fmt.Errorf("error encoding WebP: %w", err)
+		// Encoding failed - return empty result with error flag
+		return &models.RenderResult{
+			Type:         "render_result",
+			UUID:         request.UUID,
+			DeviceID:     request.Device.ID,
+			AppID:        request.AppID,
+			RenderOutput: "",
+			Error:        true,
+			ProcessedAt:  time.Now(),
+		}, fmt.Errorf("error encoding WebP: %w", err)
 	}
 
 	base64Output := base64.StdEncoding.EncodeToString(webpData)
@@ -209,6 +244,7 @@ func (p *Processor) RenderApp(ctx context.Context, request *models.RenderRequest
 		DeviceID:     request.Device.ID,
 		AppID:        request.AppID,
 		RenderOutput: base64Output,
+		Error:        false,
 		ProcessedAt:  time.Now(),
 	}, nil
 }

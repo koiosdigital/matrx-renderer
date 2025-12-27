@@ -24,7 +24,8 @@ type RenderResult struct {
 	UUID         string    `json:"uuid"` // Unique identifier for the result
 	DeviceID     string    `json:"device_id"`
 	AppID        string    `json:"app_id"`
-	RenderOutput string    `json:"render_output"` // base64 encoded WebP
+	RenderOutput string    `json:"render_output"` // base64 encoded WebP (empty string if nothing to display)
+	Error        bool      `json:"error"`         // true if rendering failed with an error
 	ProcessedAt  time.Time `json:"processed_at"`
 }
 

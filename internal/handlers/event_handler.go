@@ -46,20 +46,33 @@ func (h *EventHandler) Handle(ctx context.Context, request *models.RenderRequest
 		zap.String("device_id", request.Device.ID),
 		zap.String("type", request.Type))
 
+	// Helper to create error result
+	errorResult := func() *models.RenderResult {
+		return &models.RenderResult{
+			Type:         "render_result",
+			UUID:         request.UUID,
+			DeviceID:     request.Device.ID,
+			AppID:        request.AppID,
+			RenderOutput: "",
+			Error:        true,
+			ProcessedAt:  time.Now(),
+		}
+	}
+
 	// Validate request
 	if request.Type != "render_request" {
 		h.logger.Error("Invalid request type", zap.String("type", request.Type))
-		return nil, fmt.Errorf("invalid request type: %s", request.Type)
+		return errorResult(), fmt.Errorf("invalid request type: %s", request.Type)
 	}
 
 	if request.AppID == "" {
 		h.logger.Error("Missing app_id")
-		return nil, fmt.Errorf("app_id is required")
+		return errorResult(), fmt.Errorf("app_id is required")
 	}
 
 	if request.Device.ID == "" {
 		h.logger.Error("Missing device ID")
-		return nil, fmt.Errorf("device.id is required")
+		return errorResult(), fmt.Errorf("device.id is required")
 	}
 
 	result, err := h.pixletProcessor.RenderApp(ctx, request)
@@ -69,16 +82,8 @@ func (h *EventHandler) Handle(ctx context.Context, request *models.RenderRequest
 			zap.String("app_id", request.AppID),
 			zap.String("device_id", request.Device.ID))
 
-		// Create result with empty output on error
-		result2 := &models.RenderResult{
-			Type:         "render_result",
-			UUID:         request.UUID,
-			DeviceID:     request.Device.ID,
-			AppID:        request.AppID,
-			RenderOutput: "", // Empty output on error
-			ProcessedAt:  time.Now(),
-		}
-		return result2, err
+		// RenderApp returns a result with Empty=true, Error=true on failure
+		return result, err
 	}
 
 	h.logger.Info("Render request completed successfully",
