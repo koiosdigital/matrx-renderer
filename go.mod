@@ -10,10 +10,10 @@ require (
 	go.starlark.net v0.0.0-20240411212711-9b43f0afd521
 	go.uber.org/zap v1.26.0
 	gopkg.in/yaml.v3 v3.0.1
-	tidbyt.dev/pixlet v0.34.0
+	tidbyt.dev/pixlet v0.35.0
 )
 
-require github.com/google/go-cmp v0.7.0 // indirect
+replace tidbyt.dev/pixlet => github.com/koiosdigital/pixlet v0.35.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.5.1 // indirect

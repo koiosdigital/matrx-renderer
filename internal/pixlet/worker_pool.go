@@ -13,8 +13,6 @@ import (
 	"go.uber.org/zap"
 
 	"tidbyt.dev/pixlet/encode"
-	"tidbyt.dev/pixlet/globals"
-	"tidbyt.dev/pixlet/render"
 	"tidbyt.dev/pixlet/runtime"
 	"tidbyt.dev/pixlet/tools"
 )
@@ -260,26 +258,13 @@ func (wp *WorkerPool) renderScreens(appID string, params map[string]interface{},
 	ctx, cancel := context.WithTimeout(wp.ctx, secondsToDuration(wp.timeout))
 	defer cancel()
 
-	// Lock mutex to protect global dimension variables during render.
-	// The globals and render package variables are not thread-safe.
-	renderMu.Lock()
-	globals.Width = width
-	globals.Height = height
-	// Also set render.FrameWidth/FrameHeight directly because pixlet's Paint()
-	// only updates them when globals differ from defaults (64x32). This causes
-	// stale dimensions when switching from non-default to default sizes.
-	render.FrameWidth = width
-	render.FrameHeight = height
-
-	roots, err := applet.RunWithConfig(ctx, config)
+	// Use RunWithConfigAndDimensions to embed dimensions in roots for thread-safe rendering
+	roots, err := applet.RunWithConfigAndDimensions(ctx, config, width, height)
 	if err != nil {
-		renderMu.Unlock()
 		return nil, fmt.Errorf("error running applet: %w", err)
 	}
 
 	screens := encode.ScreensFromRoots(roots)
-	renderMu.Unlock()
-
 	return screens, nil
 }
 

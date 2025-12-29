@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/koios/matrx-renderer/internal/config"
@@ -17,8 +16,6 @@ import (
 	"go.uber.org/zap"
 
 	"tidbyt.dev/pixlet/encode"
-	"tidbyt.dev/pixlet/globals"
-	"tidbyt.dev/pixlet/render"
 	"tidbyt.dev/pixlet/runtime"
 	"tidbyt.dev/pixlet/schema"
 	"tidbyt.dev/pixlet/tools"
@@ -26,9 +23,6 @@ import (
 	"github.com/google/tink/go/testing/fakekms"
 )
 
-// renderMu protects concurrent access to pixlet's global dimension variables
-// (globals.Width, globals.Height, render.FrameWidth, render.FrameHeight)
-var renderMu sync.Mutex
 
 // Processor handles Pixlet app processing with a persistent runtime
 type Processor struct {
@@ -265,30 +259,18 @@ func (p *Processor) RenderPreview(ctx context.Context, appID string, params map[
 		maxDuration = 0
 	}
 
-	switch strings.ToLower(format) {
-	case "gif":
-		gifData, err := screens.EncodeGIF(maxDuration, filter)
-		if err != nil {
-			return nil, fmt.Errorf("error encoding GIF: %w", err)
-		}
-		p.logger.Debug("Pixlet preview rendered",
-			zap.String("app_id", appID),
-			zap.String("format", "gif"),
-			zap.Int("output_size", len(gifData)))
-		return gifData, nil
-	case "webp":
-		webpData, err := screens.EncodeWebP(maxDuration, filter)
-		if err != nil {
-			return nil, fmt.Errorf("error encoding WebP: %w", err)
-		}
-		p.logger.Debug("Pixlet preview rendered",
-			zap.String("app_id", appID),
-			zap.String("format", "webp"),
-			zap.Int("output_size", len(webpData)))
-		return webpData, nil
-	default:
-		return nil, fmt.Errorf("unsupported format: %s", format)
+	if strings.ToLower(format) != "webp" {
+		return nil, fmt.Errorf("unsupported format: %s (only webp is supported)", format)
 	}
+
+	webpData, err := screens.EncodeWebP(maxDuration, filter)
+	if err != nil {
+		return nil, fmt.Errorf("error encoding WebP: %w", err)
+	}
+	p.logger.Debug("Pixlet preview rendered",
+		zap.String("app_id", appID),
+		zap.Int("output_size", len(webpData)))
+	return webpData, nil
 }
 
 func (p *Processor) renderScreens(ctx context.Context, appID string, params map[string]interface{}, device models.Device) (*encode.Screens, error) {
@@ -371,26 +353,13 @@ func (p *Processor) renderScreensDirect(ctx context.Context, appID string, param
 	renderCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
-	// Lock mutex to protect global dimension variables during render.
-	// The globals and render package variables are not thread-safe.
-	renderMu.Lock()
-	globals.Width = width
-	globals.Height = height
-	// Also set render.FrameWidth/FrameHeight directly because pixlet's Paint()
-	// only updates them when globals differ from defaults (64x32). This causes
-	// stale dimensions when switching from non-default to default sizes.
-	render.FrameWidth = width
-	render.FrameHeight = height
-
-	roots, err := applet.RunWithConfig(renderCtx, config)
+	// Use RunWithConfigAndDimensions to embed dimensions in roots for thread-safe rendering
+	roots, err := applet.RunWithConfigAndDimensions(renderCtx, config, width, height)
 	if err != nil {
-		renderMu.Unlock()
 		return nil, fmt.Errorf("error running applet: %w", err)
 	}
 
 	screens := encode.ScreensFromRoots(roots)
-	renderMu.Unlock()
-
 	return screens, nil
 }
 

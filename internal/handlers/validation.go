@@ -364,7 +364,13 @@ func isValidDateTime(value string) bool {
 	if _, err := time.Parse("2006-01-02T15:04", value); err == nil {
 		return true
 	}
-	return strings.Contains(value, "T")
+	if _, err := time.Parse("2006-01-02T15:04:05", value); err == nil {
+		return true
+	}
+	if _, err := time.Parse("2006-01-02", value); err == nil {
+		return true
+	}
+	return false
 }
 
 func isValidLocation(value interface{}) bool {

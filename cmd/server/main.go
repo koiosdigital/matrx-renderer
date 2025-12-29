@@ -12,7 +12,6 @@ import (
 
 	"github.com/koios/matrx-renderer/internal/config"
 	"github.com/koios/matrx-renderer/internal/handlers"
-	"github.com/koios/matrx-renderer/internal/redis"
 	"go.uber.org/zap"
 )
 
@@ -34,18 +33,8 @@ func main() {
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize Redis client
-	redisClient, err := redis.NewClient(cfg.Redis, logger)
-	if err != nil {
-		logger.Fatal("Failed to create Redis client", zap.Error(err))
-	}
-	defer redisClient.Close()
-
 	// Initialize event handler
 	eventHandler := handlers.NewEventHandler(logger, cfg)
-
-	// Initialize Redis consumer with concurrent message handling
-	consumer := redis.NewConsumer(redisClient, eventHandler, logger, cfg.Pixlet.RenderWorkers)
 
 	// Create HTTP server for app management API
 	mux := http.NewServeMux()
@@ -68,20 +57,9 @@ func main() {
 		}
 	}()
 
-	// Start consuming messages from Redis
-	go func() {
-		if err := consumer.Start(); err != nil {
-			logger.Error("Redis consumer failed", zap.Error(err))
-			cancel()
-		}
-	}()
-
 	logger.Info("Server started",
-		zap.String("redis_addr", cfg.Redis.Addr),
-		zap.String("input_stream", "matrx:render_requests"),
-		zap.String("consumer_group", cfg.Redis.ConsumerGroup),
-		zap.String("consumer_name", cfg.Redis.ConsumerName),
-		zap.String("output_channel_pattern", "device:{device_id}"))
+		zap.Int("port", cfg.Server.Port),
+		zap.String("apps_path", cfg.Pixlet.AppsPath))
 
 	// Wait for interrupt signal to gracefully shutdown
 	quit := make(chan os.Signal, 1)
@@ -98,9 +76,6 @@ func main() {
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP server shutdown failed", zap.Error(err))
 	}
-
-	// Stop Redis consumer
-	consumer.Stop()
 
 	// Stop the processor's worker pool
 	eventHandler.GetProcessor().Stop()

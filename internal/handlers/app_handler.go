@@ -453,8 +453,8 @@ func (h *AppHandler) handleAppPreview(w http.ResponseWriter, r *http.Request, ap
 	}
 
 	format = strings.ToLower(strings.TrimSpace(format))
-	if format != "webp" && format != "gif" {
-		http.Error(w, "Unsupported preview format", http.StatusNotFound)
+	if format != "webp" {
+		http.Error(w, "Unsupported preview format. Use .webp", http.StatusNotFound)
 		return
 	}
 
@@ -501,11 +501,7 @@ func (h *AppHandler) handleAppPreview(w http.ResponseWriter, r *http.Request, ap
 		return
 	}
 
-	if format == "webp" {
-		w.Header().Set("Content-Type", "image/webp")
-	} else {
-		w.Header().Set("Content-Type", "image/gif")
-	}
+	w.Header().Set("Content-Type", "image/webp")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(previewBytes); err != nil {
