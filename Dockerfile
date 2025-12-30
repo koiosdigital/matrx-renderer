@@ -103,7 +103,7 @@ RUN mkdir -p /etc/s6-overlay/s6-rc.d/renderer/dependencies.d \
 # Create initial-clone oneshot service (runs once at startup)
 RUN echo "oneshot" > /etc/s6-overlay/s6-rc.d/initial-clone/type \
     && echo "appuser" > /etc/s6-overlay/s6-rc.d/initial-clone/user \
-    && printf '#!/command/with-contenv sh\necho "Performing initial git pull..."\nexport HOME=/home/appuser\ngit config --global --add safe.directory /opt/apps\ngit config --global user.email "renderer@koios.digital"\ngit config --global user.name "Matrx Renderer"\ncd /opt/apps\nif git pull origin main; then\n    echo "Initial git pull completed successfully"\nelse\n    echo "Initial git pull failed, but continuing..."\nfi\n' > /etc/s6-overlay/s6-rc.d/initial-clone/up \
+    && printf '#!/command/with-contenv sh\necho "Performing initial git pull..."\nexport HOME=/home/appuser\ngit config --global --add safe.directory /opt/apps\ngit config --global user.email "renderer@koios.digital"\ngit config --global user.name "Matrx Renderer"\ncd /opt/apps\nif git fetch origin && git reset --hard origin/main; then\n    echo "Initial git pull completed successfully"\nelse\n    echo "Initial git pull failed, but continuing..."\nfi\n' > /etc/s6-overlay/s6-rc.d/initial-clone/up \
     && chmod +x /etc/s6-overlay/s6-rc.d/initial-clone/up
 
 # Create renderer service with dependency on initial-clone
@@ -117,7 +117,7 @@ RUN echo "longrun" > /etc/s6-overlay/s6-rc.d/renderer/type \
 RUN echo "longrun" > /etc/s6-overlay/s6-rc.d/git-puller/type \
     && echo "appuser" > /etc/s6-overlay/s6-rc.d/git-puller/user \
     && echo "renderer" > /etc/s6-overlay/s6-rc.d/git-puller/dependencies.d/renderer \
-    && printf '#!/command/with-contenv sh\necho "Starting git puller service..."\nexport HOME=/home/appuser\ngit config --global --add safe.directory /opt/apps\ngit config --global user.email "renderer@koios.digital"\ngit config --global user.name "Matrx Renderer"\nwhile true; do\n    echo "Pulling latest changes..."\n    cd /opt/apps\n    if git pull origin main; then\n        echo "Git pull completed successfully"\n        # Call refresh endpoint to reload apps\n        echo "Refreshing app registry..."\n        curl -f -X POST http://localhost:8080/apps/refresh || echo "Failed to refresh apps, but continuing..."\n    else\n        echo "Git pull failed, retrying in 60 seconds"\n    fi\n    sleep 60\ndone\n' > /etc/s6-overlay/s6-rc.d/git-puller/run \
+    && printf '#!/command/with-contenv sh\necho "Starting git puller service..."\nexport HOME=/home/appuser\ngit config --global --add safe.directory /opt/apps\ngit config --global user.email "renderer@koios.digital"\ngit config --global user.name "Matrx Renderer"\nwhile true; do\n    echo "Pulling latest changes..."\n    cd /opt/apps\n    if git fetch origin && git reset --hard origin/main; then\n        echo "Git pull completed successfully"\n        # Call refresh endpoint to reload apps\n        echo "Refreshing app registry..."\n        curl -f -X POST http://localhost:8080/apps/refresh || echo "Failed to refresh apps, but continuing..."\n    else\n        echo "Git pull failed, retrying in 60 seconds"\n    fi\n    sleep 60\ndone\n' > /etc/s6-overlay/s6-rc.d/git-puller/run \
     && chmod +x /etc/s6-overlay/s6-rc.d/git-puller/run
 
 # Add services to user bundle
