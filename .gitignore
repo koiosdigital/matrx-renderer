@@ -5,6 +5,7 @@
 *.so
 *.dylib
 matrx-renderer
+apps/
 
 # Test binary, built with `go test -c`
 *.test
