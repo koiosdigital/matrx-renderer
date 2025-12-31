@@ -103,6 +103,11 @@ func (v *Validator) ValidateConfig(ctx context.Context, appID string, config map
 }
 
 func (v *Validator) resolveGeneratedFields(ctx context.Context, appID string, generatedField schema.SchemaField, config map[string]interface{}, schemaFields map[string]schema.SchemaField) ([]schema.SchemaField, error) {
+	v.logger.Debug("Resolving generated field",
+		zap.String("field_id", generatedField.ID),
+		zap.String("handler", generatedField.Handler),
+		zap.String("source", generatedField.Source))
+
 	if generatedField.Handler == "" {
 		v.logger.Warn("Generated field missing handler", zap.String("field_id", generatedField.ID))
 		return nil, nil
@@ -119,9 +124,16 @@ func (v *Validator) resolveGeneratedFields(ctx context.Context, appID string, ge
 	sourceValue, exists := config[sourceField.ID]
 	if !exists {
 		if sourceField.Default == "" {
+			v.logger.Debug("Generated field source has no value and no default",
+				zap.String("field_id", generatedField.ID),
+				zap.String("source_id", sourceField.ID))
 			return nil, nil
 		}
 		sourceValue = sourceField.Default
+		v.logger.Debug("Using default value for generated field source",
+			zap.String("field_id", generatedField.ID),
+			zap.String("source_id", sourceField.ID),
+			zap.Any("default", sourceField.Default))
 	}
 
 	parameter, err := stringifyValue(sourceValue)
@@ -130,8 +142,16 @@ func (v *Validator) resolveGeneratedFields(ctx context.Context, appID string, ge
 	}
 
 	if parameter == "" {
+		v.logger.Debug("Generated field source value is empty after stringification",
+			zap.String("field_id", generatedField.ID),
+			zap.String("source_id", sourceField.ID))
 		return nil, nil
 	}
+
+	v.logger.Debug("Calling schema handler for generated field",
+		zap.String("field_id", generatedField.ID),
+		zap.String("handler", generatedField.Handler),
+		zap.String("parameter", parameter))
 
 	result, err := v.processor.CallSchemaHandler(ctx, appID, generatedField.Handler, parameter)
 	if err != nil {
@@ -139,13 +159,24 @@ func (v *Validator) resolveGeneratedFields(ctx context.Context, appID string, ge
 	}
 
 	if result == "" {
+		v.logger.Debug("Generated field handler returned empty result",
+			zap.String("field_id", generatedField.ID),
+			zap.String("handler", generatedField.Handler))
 		return nil, nil
 	}
+
+	v.logger.Debug("Generated field handler returned result",
+		zap.String("field_id", generatedField.ID),
+		zap.Int("result_len", len(result)))
 
 	var generatedSchema schema.Schema
 	if err := json.Unmarshal([]byte(result), &generatedSchema); err != nil {
 		return nil, fmt.Errorf("failed to decode generated schema for %s: %w", generatedField.ID, err)
 	}
+
+	v.logger.Debug("Parsed generated schema",
+		zap.String("field_id", generatedField.ID),
+		zap.Int("num_fields", len(generatedSchema.Fields)))
 
 	fields := make([]schema.SchemaField, 0, len(generatedSchema.Fields))
 	for _, field := range generatedSchema.Fields {
@@ -155,8 +186,16 @@ func (v *Validator) resolveGeneratedFields(ctx context.Context, appID string, ge
 				zap.String("child_field", field.ID))
 			continue
 		}
+		v.logger.Debug("Adding generated field to schema",
+			zap.String("parent_id", generatedField.ID),
+			zap.String("child_id", field.ID),
+			zap.String("child_type", field.Type))
 		fields = append(fields, field)
 	}
+
+	v.logger.Debug("Resolved generated fields",
+		zap.String("field_id", generatedField.ID),
+		zap.Int("num_resolved", len(fields)))
 
 	return fields, nil
 }

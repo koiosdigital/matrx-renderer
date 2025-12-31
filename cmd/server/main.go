@@ -7,27 +7,49 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/koios/matrx-renderer/internal/config"
 	"github.com/koios/matrx-renderer/internal/handlers"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
+func newLogger(level string) (*zap.Logger, error) {
+	var zapLevel zapcore.Level
+	switch strings.ToLower(level) {
+	case "debug":
+		zapLevel = zapcore.DebugLevel
+	case "info":
+		zapLevel = zapcore.InfoLevel
+	case "warn", "warning":
+		zapLevel = zapcore.WarnLevel
+	case "error":
+		zapLevel = zapcore.ErrorLevel
+	default:
+		zapLevel = zapcore.InfoLevel
+	}
+
+	cfg := zap.NewProductionConfig()
+	cfg.Level = zap.NewAtomicLevelAt(zapLevel)
+	return cfg.Build()
+}
+
 func main() {
-	// Initialize logger
-	logger, err := zap.NewProduction()
+	// Load configuration first so we can use log level
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// Initialize logger with configured level
+	logger, err := newLogger(cfg.LogLevel)
 	if err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
 	defer logger.Sync()
-
-	// Load configuration
-	cfg, err := config.Load()
-	if err != nil {
-		logger.Fatal("Failed to load configuration", zap.Error(err))
-	}
 
 	// Create context for graceful shutdown
 	_, cancel := context.WithCancel(context.Background())
