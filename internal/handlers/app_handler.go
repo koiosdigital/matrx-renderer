@@ -256,6 +256,19 @@ func (h *AppHandler) handleCallSchemaHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Validate OAuth2 handler parameters if applicable
+	appSchema, schemaErr := h.processor.GetAppSchema(r.Context(), appID)
+	if schemaErr == nil {
+		field := h.validator.FindFieldByHandler(request.HandlerName, appSchema)
+		if field != nil && field.Type == "oauth2" {
+			validationErrors := h.validator.ValidateOAuth2HandlerCall(*field, request.Data)
+			if len(validationErrors) > 0 {
+				h.respondValidationFailure(w, nil, validationErrors)
+				return
+			}
+		}
+	}
+
 	// Call the schema handler using the processor
 	result, err := h.processor.CallSchemaHandler(r.Context(), appID, request.HandlerName, request.Data)
 	if err != nil {

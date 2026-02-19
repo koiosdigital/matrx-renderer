@@ -319,6 +319,13 @@ func (v *Validator) validateFieldValue(field schema.SchemaField, value interface
 			})
 		}
 
+	case "geojson":
+		if strings.TrimSpace(strValue) == "" {
+			break
+		}
+		geoErrors := v.validateGeoJSON(field, value)
+		errors = append(errors, geoErrors...)
+
 	case "notification":
 		if strings.TrimSpace(strValue) == "" {
 			errors = append(errors, ValidationError{
@@ -496,6 +503,255 @@ func decodeJSONObject(value interface{}) (map[string]interface{}, error) {
 		}
 		return obj, nil
 	}
+}
+
+// validateGeoJSON validates a GeoJSON value against RFC 7946 rules and the field's collect_point setting.
+func (v *Validator) validateGeoJSON(field schema.SchemaField, value interface{}) []ValidationError {
+	var errors []ValidationError
+
+	obj, err := decodeJSONObject(value)
+	if err != nil {
+		return append(errors, ValidationError{
+			Field:   field.ID,
+			Message: fmt.Sprintf("Field '%s' must be valid GeoJSON", field.Name),
+			Code:    "invalid_geojson",
+		})
+	}
+
+	geoType, ok := obj["type"].(string)
+	if !ok || geoType == "" {
+		return append(errors, ValidationError{
+			Field:   field.ID,
+			Message: fmt.Sprintf("Field '%s' must have a GeoJSON type property", field.Name),
+			Code:    "invalid_geojson",
+		})
+	}
+
+	switch geoType {
+	case "FeatureCollection":
+		errors = append(errors, v.validateFeatureCollection(field, obj)...)
+	case "Polygon":
+		if err := validatePolygonCoordinates(obj); err != nil {
+			errors = append(errors, ValidationError{
+				Field:   field.ID,
+				Message: fmt.Sprintf("Field '%s': %s", field.Name, err.Error()),
+				Code:    "invalid_polygon",
+			})
+		}
+	case "Point":
+		if err := validatePointCoordinates(obj); err != nil {
+			errors = append(errors, ValidationError{
+				Field:   field.ID,
+				Message: fmt.Sprintf("Field '%s': %s", field.Name, err.Error()),
+				Code:    "invalid_point",
+			})
+		}
+	}
+
+	return errors
+}
+
+func (v *Validator) validateFeatureCollection(field schema.SchemaField, obj map[string]interface{}) []ValidationError {
+	var errors []ValidationError
+
+	featuresRaw, ok := obj["features"]
+	if !ok {
+		return append(errors, ValidationError{
+			Field:   field.ID,
+			Message: fmt.Sprintf("Field '%s' FeatureCollection must have features", field.Name),
+			Code:    "invalid_geojson",
+		})
+	}
+
+	features, ok := featuresRaw.([]interface{})
+	if !ok {
+		return append(errors, ValidationError{
+			Field:   field.ID,
+			Message: fmt.Sprintf("Field '%s' features must be an array", field.Name),
+			Code:    "invalid_geojson",
+		})
+	}
+
+	hasPoint := false
+	for _, f := range features {
+		featureMap, ok := f.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		geometry, ok := featureMap["geometry"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		props, _ := featureMap["properties"].(map[string]interface{})
+		role, _ := props["role"].(string)
+		gType, _ := geometry["type"].(string)
+
+		if role == "point" || gType == "Point" {
+			hasPoint = true
+			if err := validatePointCoordinates(geometry); err != nil {
+				errors = append(errors, ValidationError{
+					Field:   field.ID,
+					Message: fmt.Sprintf("Field '%s': point %s", field.Name, err.Error()),
+					Code:    "invalid_point",
+				})
+			}
+		}
+
+		if role == "polygon" || gType == "Polygon" {
+			if err := validatePolygonCoordinates(geometry); err != nil {
+				errors = append(errors, ValidationError{
+					Field:   field.ID,
+					Message: fmt.Sprintf("Field '%s': polygon %s", field.Name, err.Error()),
+					Code:    "invalid_polygon",
+				})
+			}
+		}
+	}
+
+	if field.CollectPoint && !hasPoint {
+		errors = append(errors, ValidationError{
+			Field:   field.ID,
+			Message: fmt.Sprintf("Field '%s' requires a point feature when collect_point is enabled", field.Name),
+			Code:    "missing_point",
+		})
+	}
+
+	return errors
+}
+
+func validatePolygonCoordinates(geometry map[string]interface{}) error {
+	coordsRaw, ok := geometry["coordinates"]
+	if !ok {
+		return fmt.Errorf("polygon must have coordinates")
+	}
+
+	rings, ok := coordsRaw.([]interface{})
+	if !ok || len(rings) == 0 {
+		return fmt.Errorf("polygon coordinates must be a non-empty array of rings")
+	}
+
+	outerRing, ok := rings[0].([]interface{})
+	if !ok || len(outerRing) < 4 {
+		return fmt.Errorf("polygon ring must have at least 4 positions")
+	}
+
+	first, ok1 := outerRing[0].([]interface{})
+	last, ok2 := outerRing[len(outerRing)-1].([]interface{})
+	if !ok1 || !ok2 || len(first) < 2 || len(last) < 2 {
+		return fmt.Errorf("polygon positions must have at least 2 coordinates")
+	}
+
+	firstLng, err1 := toFloat64(first[0])
+	firstLat, err2 := toFloat64(first[1])
+	lastLng, err3 := toFloat64(last[0])
+	lastLat, err4 := toFloat64(last[1])
+	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
+		return fmt.Errorf("polygon coordinates must be numbers")
+	}
+
+	if firstLng != lastLng || firstLat != lastLat {
+		return fmt.Errorf("polygon ring is not closed (first and last positions must match)")
+	}
+
+	return nil
+}
+
+func validatePointCoordinates(geometry map[string]interface{}) error {
+	coordsRaw, ok := geometry["coordinates"]
+	if !ok {
+		return fmt.Errorf("point must have coordinates")
+	}
+
+	coords, ok := coordsRaw.([]interface{})
+	if !ok || len(coords) < 2 {
+		return fmt.Errorf("point must have at least 2 coordinates [lng, lat]")
+	}
+
+	if _, err := toFloat64(coords[0]); err != nil {
+		return fmt.Errorf("point longitude must be a number")
+	}
+	if _, err := toFloat64(coords[1]); err != nil {
+		return fmt.Errorf("point latitude must be a number")
+	}
+
+	return nil
+}
+
+func toFloat64(v interface{}) (float64, error) {
+	switch n := v.(type) {
+	case float64:
+		return n, nil
+	case json.Number:
+		return n.Float64()
+	case int:
+		return float64(n), nil
+	case int64:
+		return float64(n), nil
+	default:
+		return 0, fmt.Errorf("not a number: %T", v)
+	}
+}
+
+// ValidateOAuth2HandlerCall validates the parameters passed to an OAuth2 handler call.
+func (v *Validator) ValidateOAuth2HandlerCall(field schema.SchemaField, data string) []ValidationError {
+	var params map[string]interface{}
+	if err := json.Unmarshal([]byte(data), &params); err != nil {
+		return []ValidationError{{
+			Field:   field.ID,
+			Message: "Handler data must be valid JSON",
+			Code:    "invalid_handler_data",
+		}}
+	}
+
+	var errors []ValidationError
+
+	// client_id is always required
+	clientID, _ := params["client_id"].(string)
+	if strings.TrimSpace(clientID) == "" {
+		errors = append(errors, ValidationError{
+			Field:   field.ID,
+			Message: "client_id is required for OAuth2 handler",
+			Code:    "missing_client_id",
+		})
+	}
+
+	// code_verifier required if pkce is true
+	if field.PKCE {
+		cv, _ := params["code_verifier"].(string)
+		if strings.TrimSpace(cv) == "" {
+			errors = append(errors, ValidationError{
+				Field:   field.ID,
+				Message: "code_verifier is required when PKCE is enabled",
+				Code:    "missing_code_verifier",
+			})
+		}
+	}
+
+	// client_secret required if not using pkce and user_defined_client is set
+	if !field.PKCE && field.UserDefinedClient {
+		cs, _ := params["client_secret"].(string)
+		if strings.TrimSpace(cs) == "" {
+			errors = append(errors, ValidationError{
+				Field:   field.ID,
+				Message: "client_secret is required when user_defined_client is set without PKCE",
+				Code:    "missing_client_secret",
+			})
+		}
+	}
+
+	return errors
+}
+
+// FindFieldByHandler looks up the schema field that owns the given handler name.
+func (v *Validator) FindFieldByHandler(handlerName string, appSchema *schema.Schema) *schema.SchemaField {
+	for i, field := range appSchema.Fields {
+		if field.Handler == handlerName {
+			return &appSchema.Fields[i]
+		}
+	}
+	return nil
 }
 
 func isValidBase64Image(data string) bool {

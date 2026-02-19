@@ -455,6 +455,16 @@
                     "404": {
                         "description": "App or handler not found"
                     },
+                    "422": {
+                        "description": "Handler parameter validation failed (e.g. OAuth2 missing client_id, code_verifier, or client_secret)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValidateSchemaResponse"
+                                }
+                            }
+                        }
+                    },
                     "500": {
                         "description": "Failed to invoke schema handler"
                     }
@@ -626,6 +636,9 @@
                     },
                     {
                         "$ref": "#/components/schemas/AppSchemaNotificationField"
+                    },
+                    {
+                        "$ref": "#/components/schemas/AppSchemaGeoJSONField"
                     }
                 ],
                 "discriminator": {
@@ -635,6 +648,7 @@
                         "datetime": "#/components/schemas/AppSchemaDatetimeField",
                         "dropdown": "#/components/schemas/AppSchemaDropdownField",
                         "generated": "#/components/schemas/AppSchemaGeneratedField",
+                        "geojson": "#/components/schemas/AppSchemaGeoJSONField",
                         "location": "#/components/schemas/AppSchemaLocationField",
                         "locationbased": "#/components/schemas/AppSchemaLocationBasedField",
                         "onoff": "#/components/schemas/AppSchemaOnOffField",
@@ -733,7 +747,30 @@
                     },
                     "code": {
                         "type": "string",
-                        "description": "Machine readable error code"
+                        "description": "Machine readable error code",
+                        "enum": [
+                            "required",
+                            "unknown_field",
+                            "invalid_type",
+                            "invalid_color",
+                            "invalid_bool",
+                            "invalid_option",
+                            "invalid_datetime",
+                            "invalid_location",
+                            "invalid_location_option",
+                            "invalid_selection",
+                            "invalid_image",
+                            "invalid_notification",
+                            "missing_credentials",
+                            "invalid_geojson",
+                            "invalid_polygon",
+                            "invalid_point",
+                            "missing_point",
+                            "invalid_handler_data",
+                            "missing_client_id",
+                            "missing_code_verifier",
+                            "missing_client_secret"
+                        ]
                     }
                 },
                 "required": [
@@ -885,46 +922,6 @@
                     "default": {
                         "type": "string",
                         "description": "Default value serialized as text"
-                    },
-                    "options": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/AppSchemaOption"
-                        }
-                    },
-                    "palette": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
-                    },
-                    "sounds": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/AppSchemaSound"
-                        }
-                    },
-                    "source": {
-                        "type": "string",
-                        "description": "Field ID used as source for generated fields"
-                    },
-                    "handler": {
-                        "type": "string",
-                        "description": "Pixlet handler invoked for dynamic data"
-                    },
-                    "client_id": {
-                        "type": "string",
-                        "description": "OAuth client identifier"
-                    },
-                    "authorization_endpoint": {
-                        "type": "string",
-                        "description": "OAuth authorization endpoint"
-                    },
-                    "scopes": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        }
                     }
                 },
                 "required": [
@@ -932,6 +929,7 @@
                 ]
             },
             "AppSchemaColorField": {
+                "description": "Config value: hex color string (#RRGGBB or #RGB)",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -944,6 +942,17 @@
                                 "enum": [
                                     "color"
                                 ]
+                            },
+                            "default": {
+                                "type": "string",
+                                "format": "color",
+                                "description": "Default hex color (e.g. #FF0000)"
+                            },
+                            "palette": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
                             }
                         },
                         "required": [
@@ -953,6 +962,7 @@
                 ]
             },
             "AppSchemaDatetimeField": {
+                "description": "Config value: ISO 8601 / RFC 3339 datetime string",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -965,6 +975,11 @@
                                 "enum": [
                                     "datetime"
                                 ]
+                            },
+                            "default": {
+                                "type": "string",
+                                "format": "date-time",
+                                "description": "Default datetime in ISO 8601 format"
                             }
                         },
                         "required": [
@@ -974,6 +989,7 @@
                 ]
             },
             "AppSchemaDropdownField": {
+                "description": "Config value: string matching one of the option values",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -986,6 +1002,12 @@
                                 "enum": [
                                     "dropdown"
                                 ]
+                            },
+                            "options": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/AppSchemaOption"
+                                }
                             }
                         },
                         "required": [
@@ -996,6 +1018,7 @@
                 ]
             },
             "AppSchemaGeneratedField": {
+                "description": "Config value: none (dynamically generated from source field via handler)",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -1008,6 +1031,14 @@
                                 "enum": [
                                     "generated"
                                 ]
+                            },
+                            "source": {
+                                "type": "string",
+                                "description": "Field ID used as source for generated fields"
+                            },
+                            "handler": {
+                                "type": "string",
+                                "description": "Pixlet handler invoked for dynamic data"
                             }
                         },
                         "required": [
@@ -1019,6 +1050,7 @@
                 ]
             },
             "AppSchemaLocationField": {
+                "description": "Config value: JSON object or JSON string with lat, lng (required), and optional description, locality, place_id, timezone",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -1040,6 +1072,7 @@
                 ]
             },
             "AppSchemaLocationBasedField": {
+                "description": "Config value: JSON object or JSON string with value (required) and display (optional)",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -1052,6 +1085,10 @@
                                 "enum": [
                                     "locationbased"
                                 ]
+                            },
+                            "handler": {
+                                "type": "string",
+                                "description": "Pixlet handler invoked with location JSON to generate options"
                             }
                         },
                         "required": [
@@ -1062,6 +1099,7 @@
                 ]
             },
             "AppSchemaOnOffField": {
+                "description": "Config value: boolean or string parseable as boolean (true, false, 1, 0)",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -1083,6 +1121,7 @@
                 ]
             },
             "AppSchemaRadioField": {
+                "description": "Config value: string matching one of the option values",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -1095,6 +1134,12 @@
                                 "enum": [
                                     "radio"
                                 ]
+                            },
+                            "options": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/AppSchemaOption"
+                                }
                             }
                         },
                         "required": [
@@ -1105,6 +1150,7 @@
                 ]
             },
             "AppSchemaTextField": {
+                "description": "Config value: plain text string",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -1126,6 +1172,7 @@
                 ]
             },
             "AppSchemaTypeaheadField": {
+                "description": "Config value: JSON object or JSON string with value (required) and display (optional)",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -1138,6 +1185,10 @@
                                 "enum": [
                                     "typeahead"
                                 ]
+                            },
+                            "handler": {
+                                "type": "string",
+                                "description": "Pixlet handler invoked with search pattern to generate options"
                             }
                         },
                         "required": [
@@ -1148,6 +1199,7 @@
                 ]
             },
             "AppSchemaOAuth2Field": {
+                "description": "Config value: access token string returned by handler",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -1160,12 +1212,37 @@
                                 "enum": [
                                     "oauth2"
                                 ]
+                            },
+                            "handler": {
+                                "type": "string",
+                                "description": "Pixlet handler invoked for dynamic data"
+                            },
+                            "client_id": {
+                                "type": "string",
+                                "description": "OAuth client identifier"
+                            },
+                            "pkce": {
+                                "type": "boolean",
+                                "description": "Indicates if PKCE is used, S256 method will be used if true, and the handler will recieve an additional code_verifier parameter."
+                            },
+                            "authorization_endpoint": {
+                                "type": "string",
+                                "description": "OAuth authorization endpoint"
+                            },
+                            "scopes": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            },
+                            "user_defined_client": {
+                                "type": "boolean",
+                                "description": "If true, the user provides their own OAuth client credentials. Mutually exclusive with client_id."
                             }
                         },
                         "required": [
                             "type",
                             "handler",
-                            "client_id",
                             "authorization_endpoint",
                             "scopes"
                         ]
@@ -1173,6 +1250,7 @@
                 ]
             },
             "AppSchemaOAuth1Field": {
+                "description": "Config value: authorization token string",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -1194,6 +1272,7 @@
                 ]
             },
             "AppSchemaPNGField": {
+                "description": "Config value: base64-encoded image data, optionally with data URI prefix (data:image/png;base64,...)",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -1215,6 +1294,7 @@
                 ]
             },
             "AppSchemaNotificationField": {
+                "description": "Config value: non-empty string",
                 "allOf": [
                     {
                         "$ref": "#/components/schemas/AppSchemaFieldCommon"
@@ -1227,11 +1307,43 @@
                                 "enum": [
                                     "notification"
                                 ]
+                            },
+                            "sounds": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/AppSchemaSound"
+                                }
                             }
                         },
                         "required": [
                             "type",
                             "sounds"
+                        ]
+                    }
+                ]
+            },
+            "AppSchemaGeoJSONField": {
+                "description": "Config value: GeoJSON string or object (RFC 7946 geometry, e.g. Polygon or Point)",
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/AppSchemaFieldCommon"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "geojson"
+                                ]
+                            },
+                            "collect_point": {
+                                "type": "boolean",
+                                "description": "If true, enables point collection on the map UI in addition to polygon drawing"
+                            }
+                        },
+                        "required": [
+                            "type"
                         ]
                     }
                 ]
