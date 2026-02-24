@@ -15,7 +15,7 @@ require (
 
 require github.com/paulmach/orb v0.1.5 // indirect
 
-replace tidbyt.dev/pixlet => github.com/koiosdigital/pixlet v0.37.0
+replace tidbyt.dev/pixlet => github.com/koiosdigital/pixlet v0.38.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.5.1 // indirect

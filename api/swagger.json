@@ -857,10 +857,18 @@
                     "data": {
                         "type": "string",
                         "description": "Serialized payload passed to the handler"
+                    },
+                    "config": {
+                        "type": "object",
+                        "description": "Current app configuration passed to handlers that accept a config argument",
+                        "additionalProperties": {
+                            "type": "string"
+                        }
                     }
                 },
                 "required": [
-                    "handler_name"
+                    "handler_name",
+                    "config"
                 ]
             },
             "CallSchemaHandlerResponse": {

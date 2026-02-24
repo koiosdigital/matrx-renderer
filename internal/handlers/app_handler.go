@@ -229,8 +229,9 @@ func (h *AppHandler) handleAppSchema(w http.ResponseWriter, r *http.Request, app
 
 // CallHandlerRequest represents the request body for calling a schema handler
 type CallHandlerRequest struct {
-	HandlerName string `json:"handler_name"`
-	Data        string `json:"data"`
+	HandlerName string            `json:"handler_name"`
+	Data        string            `json:"data"`
+	Config      map[string]string `json:"config,omitempty"`
 }
 
 // CallHandlerResponse represents the response from calling a schema handler
@@ -255,6 +256,10 @@ func (h *AppHandler) handleCallSchemaHandler(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "handler_name is required", http.StatusBadRequest)
 		return
 	}
+	if request.Config == nil {
+		http.Error(w, "config is required", http.StatusBadRequest)
+		return
+	}
 
 	// Validate OAuth2 handler parameters if applicable
 	appSchema, schemaErr := h.processor.GetAppSchema(r.Context(), appID)
@@ -270,7 +275,7 @@ func (h *AppHandler) handleCallSchemaHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Call the schema handler using the processor
-	result, err := h.processor.CallSchemaHandler(r.Context(), appID, request.HandlerName, request.Data)
+	result, err := h.processor.CallSchemaHandler(r.Context(), appID, request.HandlerName, request.Data, request.Config)
 	if err != nil {
 		h.logger.Error("Failed to call schema handler",
 			zap.String("app_id", appID),

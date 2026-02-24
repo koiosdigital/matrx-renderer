@@ -153,7 +153,8 @@ func (v *Validator) resolveGeneratedFields(ctx context.Context, appID string, ge
 		zap.String("handler", generatedField.Handler),
 		zap.String("parameter", parameter))
 
-	result, err := v.processor.CallSchemaHandler(ctx, appID, generatedField.Handler, parameter)
+	handlerConfig := toStringMap(config)
+	result, err := v.processor.CallSchemaHandler(ctx, appID, generatedField.Handler, parameter, handlerConfig)
 	if err != nil {
 		return nil, fmt.Errorf("generated handler call failed for %s: %w", generatedField.ID, err)
 	}
@@ -781,6 +782,20 @@ func sanitizeBase64Payload(data string) string {
 	trimmed = strings.ReplaceAll(trimmed, "\n", "")
 	trimmed = strings.ReplaceAll(trimmed, "\r", "")
 	return trimmed
+}
+
+// toStringMap converts a map[string]interface{} to map[string]string for passing to schema handlers.
+func toStringMap(m map[string]interface{}) map[string]string {
+	if m == nil {
+		return nil
+	}
+	result := make(map[string]string, len(m))
+	for k, v := range m {
+		if s, err := stringifyValue(v); err == nil {
+			result[k] = s
+		}
+	}
+	return result
 }
 
 // stringifyValue normalizes arbitrary config values into a string for downstream Pixlet handlers

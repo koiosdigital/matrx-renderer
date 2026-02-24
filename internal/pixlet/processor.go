@@ -34,7 +34,19 @@ type Processor struct {
 	timeout             time.Duration
 	appRegistry         *models.AppRegistry         // App registry for manifest-based loading
 	secretDecryptionKey runtime.SecretDecryptionKey // Key for decrypting secrets in Pixlet apps
+	hasSecretKey        bool                        // Whether a real secret key is configured
 	workerPool          *WorkerPool                 // Worker pool for concurrent rendering
+}
+
+// appletOptions returns the common runtime options for creating an applet.
+func (p *Processor) appletOptions() []runtime.AppletOption {
+	opts := []runtime.AppletOption{
+		runtime.WithPrintDisabled(),
+	}
+	if p.hasSecretKey {
+		opts = append(opts, runtime.WithSecretDecryptionKey(&p.secretDecryptionKey))
+	}
+	return opts
 }
 
 // ErrSchemaNotDefined indicates that an app does not expose a Pixlet schema.
@@ -107,6 +119,8 @@ func NewProcessor(cfg *config.PixletConfig, logger *zap.Logger) *Processor {
 	)
 	workerPool.Start()
 
+	hasKey := secretDecryptionKey.EncryptedKeysetJSON != nil
+
 	return &Processor{
 		config:              cfg,
 		logger:              logger,
@@ -114,6 +128,7 @@ func NewProcessor(cfg *config.PixletConfig, logger *zap.Logger) *Processor {
 		timeout:             time.Duration(timeout) * time.Second,
 		appRegistry:         appRegistry,
 		secretDecryptionKey: *secretDecryptionKey,
+		hasSecretKey:        hasKey,
 		workerPool:          workerPool,
 	}
 }
@@ -156,6 +171,8 @@ func NewProcessorWithRedis(cfg *config.PixletConfig, redisConfig *config.RedisCo
 	)
 	workerPool.Start()
 
+	hasKey := secretDecryptionKey.EncryptedKeysetJSON != nil
+
 	return &Processor{
 		config:              cfg,
 		redisConfig:         redisConfig,
@@ -165,6 +182,7 @@ func NewProcessorWithRedis(cfg *config.PixletConfig, redisConfig *config.RedisCo
 		timeout:             time.Duration(timeout) * time.Second,
 		appRegistry:         appRegistry,
 		secretDecryptionKey: *secretDecryptionKey,
+		hasSecretKey:        hasKey,
 		workerPool:          workerPool,
 	}
 }
@@ -316,12 +334,7 @@ func (p *Processor) renderScreensDirect(ctx context.Context, appID string, param
 		appFS = tools.NewSingleFileFS(appPath)
 	}
 
-	opts := []runtime.AppletOption{
-		runtime.WithPrintDisabled(),
-		runtime.WithSecretDecryptionKey(&p.secretDecryptionKey),
-	}
-
-	applet, err := runtime.NewAppletFromFS(appID, appFS, opts...)
+	applet, err := runtime.NewAppletFromFS(appID, appFS, p.appletOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load applet: %w", err)
 	}
@@ -453,12 +466,7 @@ func (p *Processor) GetAppSchema(ctx context.Context, appID string) (*schema.Sch
 	}
 
 	// Create applet with silent output (no print statements)
-	opts := []runtime.AppletOption{
-		runtime.WithPrintDisabled(),
-		runtime.WithSecretDecryptionKey(&p.secretDecryptionKey),
-	}
-
-	applet, err := runtime.NewAppletFromFS(appID, appFS, opts...)
+	applet, err := runtime.NewAppletFromFS(appID, appFS, p.appletOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load applet: %w", err)
 	}
@@ -472,7 +480,7 @@ func (p *Processor) GetAppSchema(ctx context.Context, appID string) (*schema.Sch
 }
 
 // CallSchemaHandler calls a schema handler for a specific app
-func (p *Processor) CallSchemaHandler(ctx context.Context, appID, handlerName, parameter string) (string, error) {
+func (p *Processor) CallSchemaHandler(ctx context.Context, appID, handlerName, parameter string, config map[string]string) (string, error) {
 	// Validate app ID (security: prevent path traversal)
 	if strings.Contains(appID, "..") || strings.Contains(appID, "/") {
 		return "", fmt.Errorf("invalid app ID: %s", appID)
@@ -504,12 +512,7 @@ func (p *Processor) CallSchemaHandler(ctx context.Context, appID, handlerName, p
 	}
 
 	// Create applet with silent output (no print statements)
-	opts := []runtime.AppletOption{
-		runtime.WithPrintDisabled(),
-		runtime.WithSecretDecryptionKey(&p.secretDecryptionKey),
-	}
-
-	applet, err := runtime.NewAppletFromFS(appID, appFS, opts...)
+	applet, err := runtime.NewAppletFromFS(appID, appFS, p.appletOptions()...)
 	if err != nil {
 		return "", fmt.Errorf("failed to load applet: %w", err)
 	}
@@ -520,7 +523,7 @@ func (p *Processor) CallSchemaHandler(ctx context.Context, appID, handlerName, p
 	}
 
 	// Call the schema handler
-	result, err := applet.CallSchemaHandler(ctx, handlerName, parameter)
+	result, err := applet.CallSchemaHandler(ctx, handlerName, parameter, config)
 	if err != nil {
 		return "", fmt.Errorf("error calling schema handler %s: %w", handlerName, err)
 	}
