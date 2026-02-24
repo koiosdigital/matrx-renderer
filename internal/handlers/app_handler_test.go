@@ -499,3 +499,144 @@ func TestCallHandler_TwoParamHandler_EmptyConfig(t *testing.T) {
 		t.Errorf("Expected result to contain fallback 'anonymous', got: %s", resp.Result)
 	}
 }
+
+// --- Generated handler resolution tests ---
+// These test the case where a handler is defined in a Generated field's return
+// value (e.g., a LocationBased handler returned by a Generated handler).
+
+func setupGeneratedTestHandler(t *testing.T) *AppHandler {
+	t.Helper()
+
+	tempDir := t.TempDir()
+	appDir := filepath.Join(tempDir, "gen-app")
+	if err := os.MkdirAll(appDir, 0755); err != nil {
+		t.Fatalf("Failed to create app directory: %v", err)
+	}
+
+	appContent := `
+load("render.star", "render")
+load("schema.star", "schema")
+
+def main(config):
+    return render.Root(
+        child=render.Text("Hello"),
+    )
+
+def location_handler(location):
+    return [
+        schema.Option(display="Station at " + location, value=location),
+    ]
+
+def location_handler_with_config(location, config):
+    user = config.get("user_id", "nobody")
+    return [
+        schema.Option(display="Station for " + user + " at " + location, value=location),
+    ]
+
+def generated_handler(auth):
+    return [
+        schema.LocationBased(
+            id = "station",
+            name = "Station",
+            desc = "Pick a station",
+            icon = "place",
+            handler = location_handler,
+        ),
+        schema.LocationBased(
+            id = "station_cfg",
+            name = "Station With Config",
+            desc = "Pick a station (config-aware)",
+            icon = "place",
+            handler = location_handler_with_config,
+        ),
+    ]
+
+def get_schema():
+    return schema.Schema(
+        version = "1",
+        fields = [
+            schema.Text(
+                id = "user_id",
+                name = "User ID",
+                desc = "Your user ID",
+                icon = "user",
+            ),
+            schema.Generated(
+                id = "generated",
+                source = "auth",
+                handler = generated_handler,
+            ),
+        ],
+    )
+`
+	if err := os.WriteFile(filepath.Join(appDir, "gen-app.star"), []byte(appContent), 0644); err != nil {
+		t.Fatalf("Failed to create app file: %v", err)
+	}
+
+	manifest := `id: gen-app
+name: gen-app
+summary: Generated test app
+desc: Test app with Generated schema handlers
+author: Test Suite
+fileName: gen-app.star
+packageName: apps.gen-app
+`
+	if err := os.WriteFile(filepath.Join(appDir, "manifest.yaml"), []byte(manifest), 0644); err != nil {
+		t.Fatalf("Failed to write manifest: %v", err)
+	}
+
+	cfg := &config.PixletConfig{
+		AppsPath: tempDir,
+	}
+	logger := zap.NewNop()
+	processor := pixlet.NewProcessor(cfg, logger)
+
+	return NewAppHandler(processor, logger)
+}
+
+func TestCallHandler_GeneratedSubHandler(t *testing.T) {
+	h := setupGeneratedTestHandler(t)
+
+	// Call the LocationBased handler that's only available after resolving
+	// the Generated handler. The processor should auto-resolve this.
+	w := callHandler(h, "gen-app", map[string]interface{}{
+		"handler_name": "station$location_handler",
+		"data":         "40.7,-74.0",
+		"config":       map[string]string{"auth": "token123"},
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp CallHandlerResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if resp.Result == "" {
+		t.Error("Expected non-empty result")
+	}
+}
+
+func TestCallHandler_GeneratedSubHandler_WithConfig(t *testing.T) {
+	h := setupGeneratedTestHandler(t)
+
+	// Call the two-param LocationBased handler with config
+	w := callHandler(h, "gen-app", map[string]interface{}{
+		"handler_name": "station_cfg$location_handler_with_config",
+		"data":         "40.7,-74.0",
+		"config":       map[string]string{"auth": "token123", "user_id": "alice"},
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp CallHandlerResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if !bytes.Contains([]byte(resp.Result), []byte("alice")) {
+		t.Errorf("Expected result to contain config value 'alice', got: %s", resp.Result)
+	}
+}

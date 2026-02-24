@@ -524,11 +524,55 @@ func (p *Processor) CallSchemaHandler(ctx context.Context, appID, handlerName, p
 
 	// Call the schema handler
 	result, err := applet.CallSchemaHandler(ctx, handlerName, parameter, config)
+	if err != nil && strings.Contains(err.Error(), "no exported handler named") {
+		// Handler not found in the initial schema. This happens when the
+		// handler is defined inside a Generated field's return value (e.g.,
+		// a LocationBased handler returned by a Generated handler). Resolve
+		// by calling all Generated handlers first — this merges their
+		// returned sub-handlers into the applet's handler map — then retry.
+		if p.resolveGeneratedHandlers(ctx, applet, config) {
+			result, err = applet.CallSchemaHandler(ctx, handlerName, parameter, config)
+		}
+	}
 	if err != nil {
 		return "", fmt.Errorf("error calling schema handler %s: %w", handlerName, err)
 	}
 
 	return result, nil
+}
+
+// resolveGeneratedHandlers calls all Generated schema handlers on the applet
+// so that any sub-handlers they return get merged into the applet's handler map.
+// Returns true if any Generated handlers were called.
+func (p *Processor) resolveGeneratedHandlers(ctx context.Context, applet *runtime.Applet, config map[string]string) bool {
+	if applet.Schema == nil {
+		return false
+	}
+
+	resolved := false
+	for _, field := range applet.Schema.Fields {
+		if field.Type != "generated" || field.Handler == "" {
+			continue
+		}
+
+		// The Generated field's "source" references another config field
+		// whose value is the parameter for the Generated handler.
+		sourceValue := ""
+		if config != nil {
+			sourceValue = config[field.Source]
+		}
+
+		if _, err := applet.CallSchemaHandler(ctx, field.Handler, sourceValue, config); err != nil {
+			p.logger.Debug("failed to resolve generated handler",
+				zap.String("handler", field.Handler),
+				zap.Error(err),
+			)
+			continue
+		}
+		resolved = true
+	}
+
+	return resolved
 }
 
 // Close closes the processor and any associated resources
