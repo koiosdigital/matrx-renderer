@@ -8,3 +8,10 @@ on:
 jobs:
   build:
     uses: acvigue/.github/.github/workflows/docker_build.yml@main
+  deploy:
+    needs: build
+    uses: acvigue/.github/.github/workflows/argocd_redeploy.yml@main
+    with:
+      argocd_repo: "koiosdigital/kubernetes"
+      deployment_file: "base/device-api/matrx-renderer-deployment.yaml"
+    secrets: inherit
